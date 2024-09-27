@@ -1,0 +1,186 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  packages: write
+  actions: write
+
+jobs:
+  build_and_release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_body: ${{ steps.prepare_release_body.outputs.body }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Update package version, generate and push README
+        run: |
+          npm version ${{ github.ref_name }} --no-git-tag-version
+          WORKFLOW_FILE="generate-release.yml"
+          sed -e "s/{{user}}/${{ github.actor }}/g" \
+            -e "s/{{repo}}/${{ github.event.repository.name }}/g" \
+            -e "s/{{workflow_file}}/$WORKFLOW_FILE/g" \
+            -e "s/{{version}}/${{ github.ref_name }}/g" \
+            README.template.md > README.md
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git add package.json
+          git commit -m "Feat: Atualizado README.md"
+          git push origin HEAD:main
+
+      - name: Install dependencies
+        working-directory: ./src
+        run: |
+          if [ -d "./src" ]; then
+              npm install
+          else
+              echo "Pasta ./src não encontrada. Pulando instalação de dependências."
+          fi
+
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Set up QEMU
+        id: qemu
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        id: login-ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+      - name: Get commit messages, version, and repository description
+        id: get_project_information
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+
+          if [ -n "$LAST_TAG" ]; then
+            COMMITS=$(git log $LAST_TAG..$GITHUB_SHA --oneline --pretty=format:"%h %s")
+          else
+            echo "Nenhuma tag anterior encontrada. Coletando todos os commits até a tag atual."
+            COMMITS=$(git log --oneline --pretty=format:"%h %s")
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            echo "Nenhuma mudança significativa desde a última release." > ./release_body.txt
+          else
+            echo "$COMMITS" > ./release_body.txt
+          fi
+
+      - name: Prepare release body
+        id: prepare_release_body
+        run: |
+          if [ -f release_body.txt ]; then
+              RELEASE_NOTES=$(head -n 1900 release_body.txt)
+              echo "body=$RELEASE_NOTES" >> $GITHUB_OUTPUT
+          else
+              echo "Arquivo release_body.txt não encontrado!"
+              echo "body=Nenhuma nota de release disponível." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Release
+        uses: comnoco/create-release-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        id: release
+        with:
+          tag_name: "${{ github.ref_name }}"
+          release_name: "${{ steps.get_project_information.outputs.version }}"
+          body_path: release_body.txt
+          draft: false
+          prerelease: false
+
+  post_to_discord:
+    needs: build_and_release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord (with embed)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK }}
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_AUTHOR: ${{ github.actor }}
+          RELEASE_BODY: ${{ needs.build_and_release.outputs.release_body }}
+          LOGO_URL: ${{ secrets.LOGO_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "Webhook URL não definido. Pulando o envio do webhook."
+            exit 0
+          fi
+
+          REPO_DESCRIPTION=$(curl -s https://api.github.com/repos/${{ github.repository }} | jq -r .description)
+
+          AUTHOR='{
+              "name": "Github - Updates",
+              "icon_url": "'"${LOGO_URL:-}"'"
+          }'
+          FOOTER='{
+              "text": "Realizado por: '"${RELEASE_AUTHOR}"'",
+              "icon_url": "'"${LOGO_URL:-}"'"
+          }'
+
+          EMBED_DATA='{
+              "embeds": [{
+              "author": '"${AUTHOR}"',
+              "title": "[${{ github.event.repository.name }}] Nova versão disponível: '"${RELEASE_TAG}"'",
+              "url": "'"${RELEASE_URL}"'",
+              "description": "'"${REPO_DESCRIPTION}"'",
+              "fields": [{
+                  "name": "O que há de novo?",
+                  "value": "'"${RELEASE_BODY}"'"
+              },
+              {
+                  "name": "Veja todas as mudanças",
+                  "value": "[Veja todas as mudanças aqui](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})"
+              }],
+              "color": 4243543,
+              "footer": '"${FOOTER}"',
+              "timestamp": "'"$(date --utc +%Y-%m-%dT%H:%M:%SZ)"'"
+              }]
+          }'
+
+          curl -H "Content-Type: application/json" \
+              -d "$EMBED_DATA" \
+              $DISCORD_WEBHOOK_URL
