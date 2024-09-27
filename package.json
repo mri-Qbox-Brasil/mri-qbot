@@ -1,14 +1,17 @@
 {
-    "name": "discord-bot-template",
-    "version": "1.0.5",
+    "name": "mri-qbot",
+    "version": "0.0.1",
     "description": "Your awesome bot.",
     "main": "src/bot.js",
     "scripts": {
         "start": "node src/bot.js"
     },
     "dependencies": {
-        "discord-bot-template": "file:",
         "discord.js": "^14.16.2",
-        "dotenv": "^16.4.5"
+        "dotenv": "^16.4.5",
+        "moment": "^2.30.1",
+        "mri-qbot": "file:",
+        "sequelize": "^6.37.3",
+        "sqlite3": "^5.1.7"
     }
 }
