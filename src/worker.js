@@ -1,34 +1,73 @@
-function checkExpiredRoles(client) {
+const { Op } = require('sequelize');
+const cron = require('node-cron');
+const moment = require('moment');
+const sequelize = require('./database/sequelize');
+const Supporters = require('./model/supporterModel');
+const SupporterLogs = require('./model/supporterLogsModel');
+
+async function checkExpiredRoles(client) {
     const now = moment().format('YYYY-MM-DD');
+    try {
+        const expiredSupporters = await Supporters.findAll({
+            where: {
+                expirationDate: {
+                    [Op.lte]: now,
+                },
+                roleId: { [Op.ne]: null },
+            },
+        });
 
-    db.all(`SELECT id, role, expiry_date, support_user_id FROM users WHERE expiry_date <= ?`, [now], (err, rows) => {
-      if (err) {
-        console.error('Erro ao verificar cargos expirados:', err.message);
-        return;
-      }
+        for (const supporter of expiredSupporters) {
+            const transaction = await sequelize.transaction();
+            try {
+                const guild = client.guilds.cache.get(supporter.guildId);
+                if (!guild) continue;
 
-      rows.forEach(row => {
-        const guild = client.guilds.cache.get('SEU_GUILD_ID');
-        const member = guild.members.cache.get(row.id);
-        const role = guild.roles.cache.find(r => r.name === row.role);
-        const supportUser = row.support_user_id ? guild.members.cache.get(row.support_user_id) : null;
+                const member = guild.members.cache.get(supporter.userId);
+                const role = guild.roles.cache.get(supporter.roleId);
+                const supportUser = supporter.supportUserId ? await guild.members.fetch(supporter.supportUserId) : null;
 
-        if (member && role) {
-          member.roles.remove(role).then(() => {
-            console.log(`Cargo ${row.role} removido de ${member.user.username}`);
+                if (member && role) {
+                    await member.roles.remove(role);
+                    console.log(`Cargo ${role.name} removido de ${member.user.username}`);
 
-            if (supportUser) {
-              supportUser.send(`O cargo ${row.role} de ${member.user.username} expirou.`);
+                    if (supportUser) {
+                        await supportUser.send(`O cargo ${role.name} de ${member.user.username} expirou.`);
+                    }
+
+                    await SupporterLogs.create({
+                        userId: supporter.userId,
+                        guildId: supporter.guildId,
+                        roleId: supporter.roleId,
+                        actionType: 'expired',
+                        performedBy: 'system',
+                        actionDate: new Date(),
+                    }, { transaction });
+
+                    await supporter.update({
+                        roleId: null,
+                        expirationDate: null,
+                    }, { transaction });
+                }
+                await transaction.commit();
+            } catch (error) {
+                await transaction.rollback();
+                console.error('Erro ao registrar ação:', error);
             }
-
-            // Limpar cargo e expiração do banco
-            db.run(`UPDATE users SET role = NULL, expiry_date = NULL WHERE id = ?`, [row.id], function(err) {
-              if (err) {
-                console.error('Erro ao atualizar o banco de dados:', err.message);
-              }
-            });
-          }).catch(console.error);
         }
-      });
+    }
+
+    catch (error) {
+        console.error('Erro ao verificar cargos expirados:', error);
+    }
+}
+
+function startRoleCheck(client, checkPeriod) {
+    checkPeriod = checkPeriod || '*/5 * * * *';
+    cron.schedule(checkPeriod, () => {
+        console.log('Verificando cargos expirados...');
+        checkExpiredRoles(client);
     });
-  }
+}
+
+module.exports = { startRoleCheck };

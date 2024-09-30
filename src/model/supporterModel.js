@@ -22,6 +22,10 @@ const Supporters = sequelize.define('supporters', {
     supportUserId: {
         type: DataTypes.STRING,
         allowNull: true
+    },
+    guildId: {
+        type: DataTypes.STRING,
+        allowNull: false
     }
 });
 

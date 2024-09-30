@@ -2,9 +2,10 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v10');
+const { startRoleCheck } = require('./worker');
 require('dotenv').config();
 
-const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID } = process.env;
+const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID, SUPPORTER_CHECK_PERIOD } = process.env;
 
 const client = new Client({
     intents: [
@@ -74,6 +75,7 @@ async function syncCommands() {
 
 client.once('ready', () => {
     syncCommands();
+    startRoleCheck(client, SUPPORTER_CHECK_PERIOD);
     console.log(`Logged in as ${client.user.tag}!`);
 });
 

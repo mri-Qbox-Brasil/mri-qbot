@@ -11,7 +11,7 @@ module.exports = {
                 .setRequired(true))
         .addRoleOption(option =>
             option.setName('cargo')
-                .setDescription('Cargo a ser adicionado ou removido comando')
+                .setDescription('Cargo a ser adicionado ou removido do comando')
                 .setRequired(true))
         .addBooleanOption(option =>
             option.setName('remover')
@@ -19,6 +19,13 @@ module.exports = {
                 .setRequired(false)),
 
     async execute(interaction) {
+        if (!interaction.member.permissions.has('ADMINISTRATOR')) {
+            return interaction.reply({
+                content: 'Você precisa ser um administrador para usar este comando.',
+                ephemeral: true
+            });
+        }
+
         const commandName = interaction.options.getString('comando');
         const role = interaction.options.getRole('cargo');
         const remove = interaction.options.getBoolean('remover') || false;
@@ -31,29 +38,31 @@ module.exports = {
                 });
 
                 if (!row) {
-                    return interaction.editReply(`Nenhuma permissão encontrada para o cargo ${role.name} no comando ${commandName}.`, { ephemeral: true });
+                    return interaction.editReply(`Nenhuma permissão encontrada para o cargo ${role.name} no comando ${commandName}.`);
                 }
 
                 await row.destroy();
-                await interaction.editReply(`Cargo ${role.name} foi removido do comando ${commandName} com sucesso!`, { ephemeral: true });
+                await interaction.editReply(`Cargo ${role.name} foi removido do comando ${commandName} com sucesso!`);
             } else {
                 const existingRole = await CommandRoles.findOne({
                     where: { commandName, roleId: role.id }
                 });
 
                 if (existingRole) {
-                    return interaction.editReply(`O cargo ${role.name} já está permitido para o comando ${commandName}.`, { ephemeral: true });
+                    return interaction.editReply(`O cargo ${role.name} já está permitido para o comando ${commandName}.`);
                 }
+
                 await CommandRoles.create({
                     commandName,
                     roleId: role.id,
+                    guildId: interaction.guild.id
                 });
 
-                await interaction.editReply(`Cargo ${role.name} foi adicionado ao comando ${commandName} com sucesso!`, { ephemeral: true });
+                await interaction.editReply(`Cargo ${role.name} foi adicionado ao comando ${commandName} com sucesso!`);
             }
         } catch (error) {
             console.error('Erro ao configurar o cargo permitido:', error);
-            await interaction.editReply('Ocorreu um erro ao configurar o cargo permitido.\n' + error, { ephemeral: true });
+            await interaction.editReply('Ocorreu um erro ao configurar o cargo permitido.\n' + error);
         }
     },
 };

@@ -4,7 +4,9 @@ const { Sequelize } = require('sequelize');
 const moment = require('moment');
 const sequelize = require('../database/sequelize');
 const Supporters = require('../model/supporterModel');
+const SupporterLogs = require('../model/supporterLogsModel');
 const CommandRoles = require('../model/commandRoleModel');
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('supporter')
@@ -40,6 +42,7 @@ module.exports = {
             if (!hasPermission) {
                 return interaction.editReply({ content: 'Você não tem permissão para usar este comando.', ephemeral: true });
             }
+
             const result = await sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE }, async transaction => {
 
                 const user = interaction.options.getUser('usuario');
@@ -52,8 +55,10 @@ module.exports = {
                 if (expiryInput) {
                     if (!isNaN(expiryInput)) {
                         expiryDate = moment().add(parseInt(expiryInput), 'days').toDate();
-                    } else {
+                    } else if (moment(expiryInput, 'DD/MM/YYYY', true).isValid()) {
                         expiryDate = moment(expiryInput, 'DD/MM/YYYY').toDate();
+                    } else {
+                        throw new Error('Formato de data inválido. Use dias ou dd/mm/yyyy.');
                     }
                 }
 
@@ -72,15 +77,28 @@ module.exports = {
                     previousRole = await interaction.guild.roles.fetch(previousRoleId);
                 }
 
+                await SupporterLogs.create({
+                    userId: interaction.user.id,
+                    guildId: interaction.guild.id,
+                    roleId: role ? role.id : previousRoleId,
+                    actionType: role ? 'added' : 'removed',
+                    performedBy: interaction.user.id,
+                    actionDate: new Date(),
+                }, { transaction });
+
                 await Supporters.upsert({
                     userId: user.id,
                     roleId: role ? role.id : previousRoleId,
                     expirationDate: expiryDate ? expiryDate : previousExpiryDate,
-                    supportUserId: supportUser ? supportUser.id : previousSupportUserId
+                    supportUserId: supportUser ? supportUser.id : previousSupportUserId,
+                    guildId: interaction.guild.id
                 }, { transaction });
 
                 if (role) {
                     await guildMember.roles.add(role.id);
+                    if (previousRoleId && previousRoleId !== role.id) await guildMember.roles.remove(previousRoleId);
+                } else if (previousRoleId) {
+                    await guildMember.roles.remove(previousRoleId);
                 }
 
                 return {
@@ -111,7 +129,7 @@ module.exports = {
 
         } catch (error) {
             console.error('Erro ao executar o comando:', error);
-            await interaction.editReply({ content: 'Ocorreu um erro ao processar o comando.' + '\n' + error, ephemeral: true });
+            await interaction.editReply({ content: `Ocorreu um erro ao processar o comando: ${error.message}`, ephemeral: true });
         }
     },
 };

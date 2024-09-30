@@ -15,6 +15,10 @@ const CommandRoles = sequelize.define('commandRoles', {
         type: DataTypes.STRING,
         allowNull: false,
     },
+    guildId: {
+        type: DataTypes.STRING,
+        allowNull: false
+    }
 });
 
 CommandRoles.sync();
