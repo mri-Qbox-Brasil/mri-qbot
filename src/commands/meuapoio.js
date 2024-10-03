@@ -19,7 +19,7 @@ module.exports = {
 
             if (!supporterData) {
                 return interaction.editReply({
-                    content: 'Você não apoio atualmente.',
+                    content: 'Você não está apoiando atualmente.',
                     ephemeral: true
                 });
             }

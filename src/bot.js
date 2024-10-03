@@ -66,7 +66,7 @@ async function syncCommands() {
         }
 
         if (DEBUG_MODE) await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        await rest.put(Routes.applicationCommands(clientId), { body: commands });
+        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
         console.log('Comandos sincronizados com sucesso!');
 
     } catch (error) {

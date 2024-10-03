@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../database/sequelize');
 
-const SupporterLogs = sequelize.define('SupporterLogs', {
+const SupporterLogs = sequelize.define('supporter_logs', {
     userId: {
         type: DataTypes.STRING,
         allowNull: false,
@@ -12,7 +12,7 @@ const SupporterLogs = sequelize.define('SupporterLogs', {
     },
     roleId: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
     },
     actionType: {
         type: DataTypes.ENUM('added', 'removed', 'expired'),
@@ -20,7 +20,7 @@ const SupporterLogs = sequelize.define('SupporterLogs', {
     },
     performedBy: {
         type: DataTypes.STRING,
-        allowNull: true,
+        allowNull: false,
     },
     actionDate: {
         type: DataTypes.DATE,
