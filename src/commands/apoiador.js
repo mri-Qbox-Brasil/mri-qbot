@@ -9,11 +9,11 @@ const CommandRoles = require('../model/commandRoleModel');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('supporter')
-        .setDescription('Configura ou atualiza dados de um usuário com cargo temporário')
+        .setName('apoiador')
+        .setDescription('Configura ou atualiza dados de um apoiador.')
         .addUserOption(option =>
             option.setName('usuario')
-                .setDescription('Usuário para definir o cargo')
+                .setDescription('Usuário para definir o apoio (obrigatório)')
                 .setRequired(true))
         .addRoleOption(option =>
             option.setName('cargo')
@@ -21,11 +21,11 @@ module.exports = {
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('validade')
-                .setDescription('Data de expiração (em dias ou dd/mm/yyyy) (opcional)')
+                .setDescription('Data de validade (em dias ou dd/mm/yyyy) (opcional)')
                 .setRequired(false))
         .addUserOption(option =>
             option.setName('responsavel')
-                .setDescription('Usuário responsável pelo suporte (opcional)')
+                .setDescription('Usuário responsável pelo suporte ao apoiador (opcional)')
                 .setRequired(false)),
 
     async execute(interaction) {
@@ -34,7 +34,7 @@ module.exports = {
         try {
             const userRoles = interaction.member.roles.cache.map(role => role.id);
             const allowedRoles = await CommandRoles.findAll({
-                where: { commandName: 'supporter' }
+                where: { commandName: 'apoiador' }
             });
             const allowedRoleIds = allowedRoles.map(role => role.roleId);
             const hasPermission = allowedRoleIds.some(roleId => userRoles.includes(roleId));
@@ -113,15 +113,15 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setColor(0x0099ff)
-                .setTitle('Dados do Usuário Atualizados')
+                .setTitle('Apoiador atualizado')
                 .addFields(
-                    { name: 'Usuário', value: `<@${interaction.options.getUser('usuario').id}>` },
-                    { name: 'Cargo Anterior', value: result.previousRole ? `<@&${result.previousRole.id}>` : 'Nenhum', inline: true },
+                    { name: 'Apoiador', value: `<@${interaction.options.getUser('usuario').id}>` },
+                    { name: 'Nível Anterior', value: result.previousRole ? `<@&${result.previousRole.id}>` : 'Sem apoio', inline: true },
                     { name: 'Suporte Anterior', value: result.previousSupportUser ? `<@${result.previousSupportUser.id}>` : 'Nenhum', inline: true },
-                    { name: 'Data de Expiração Anterior', value: result.previousExpiryDate ? moment(result.previousExpiryDate).format('DD/MM/YYYY') : 'Nenhuma', inline: true },
-                    { name: 'Novo Cargo', value: result.role ? `<@&${result.role.id}>` : 'Nenhum', inline: true },
-                    { name: 'Novo Suporte', value: result.supportUser ? `<@${result.supportUser.id}>` : 'Nenhum', inline: true },
-                    { name: 'Nova Data de Expiração', value: result.expiryDate ? moment(result.expiryDate).format('DD/MM/YYYY') : 'Nenhuma', inline: true }
+                    { name: 'Data de Validade Anterior', value: result.previousExpiryDate ? moment(result.previousExpiryDate).format('DD/MM/YYYY') : 'Sem validade', inline: true },
+                    { name: 'Nível Atual', value: result.role ? `<@&${result.role.id}>` : 'Sem apoio', inline: true },
+                    { name: 'Suporte Atual', value: result.supportUser ? `<@${result.supportUser.id}>` : 'Nenhum', inline: true },
+                    { name: 'Data de Validade', value: result.expiryDate ? moment(result.expiryDate).format('DD/MM/YYYY') : 'Sem validade', inline: true }
                 )
                 .setTimestamp();
 

@@ -6,7 +6,7 @@ const Supporters = require('../model/supporterModel');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('meuapoio')
-        .setDescription('Exibe informações sobre seu cargo temporário, prazo de validade e quem presta suporte.'),
+        .setDescription('Exibe informações sobre seu apoio.'),
 
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
@@ -19,7 +19,7 @@ module.exports = {
 
             if (!supporterData) {
                 return interaction.editReply({
-                    content: 'Você não possui um cargo temporário configurado.',
+                    content: 'Você não apoio atualmente.',
                     ephemeral: true
                 });
             }
@@ -34,10 +34,10 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setColor(0x0099ff)
-                .setTitle('Suas Informações de Cargo Temporário')
+                .setTitle('Suas Informações de Apoio')
                 .addFields(
-                    { name: 'Cargo', value: role ? `<@&${role.id}>` : 'Nenhum', inline: true },
-                    { name: 'Prazo de Validade', value: expiryDate, inline: true },
+                    { name: 'Nível', value: role ? `<@&${role.id}>` : 'Sem apoio', inline: true },
+                    { name: 'Válido até', value: expiryDate, inline: true },
                     { name: 'Responsável pelo Suporte', value: supportUser ? `<@${supportUser.id}>` : 'Nenhum', inline: true }
                 )
                 .setTimestamp();

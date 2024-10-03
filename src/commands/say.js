@@ -4,7 +4,7 @@ const CommandRoles = require('../model/commandRoleModel');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('say')
-        .setDescription('Repete a mensagem fornecida.')
+        .setDescription('Envia uma mensagem para o canal atual ou para um canal especifico.')
         .addStringOption(option =>
             option.setName('mensagem')
                 .setDescription('O que o bot deve dizer')

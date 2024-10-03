@@ -5,7 +5,7 @@ const { Routes } = require('discord-api-types/v10');
 const { startRoleCheck } = require('./worker');
 require('dotenv').config();
 
-const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID, SUPPORTER_CHECK_PERIOD } = process.env;
+const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID, SUPPORTER_CHECK_PERIOD, DEBUG_MODE } = process.env;
 
 const client = new Client({
     intents: [
@@ -65,7 +65,8 @@ async function syncCommands() {
             console.log(`Comando removido: ${command.name}`);
         }
 
-        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+        if (DEBUG_MODE) await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+        await rest.put(Routes.applicationCommands(clientId), { body: commands });
         console.log('Comandos sincronizados com sucesso!');
 
     } catch (error) {
