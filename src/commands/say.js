@@ -1,5 +1,5 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const CommandRoles = require('../model/commandRoleModel');
+const { SlashCommandBuilder, EmbedBuilder } = require('@discordjs/builders');
+const { colors } = require('../utils/constants');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -7,40 +7,55 @@ module.exports = {
         .setDescription('Envia uma mensagem para o canal atual ou para um canal especifico.')
         .addStringOption(option =>
             option.setName('mensagem')
-                .setDescription('O que o bot deve dizer')
+                .setDescription('Qual mensagem o bot irá enviar? (obrigatório)')
                 .setRequired(true))
         .addChannelOption(option =>
             option.setName('canal')
-                .setDescription('O canal onde a mensagem será enviada')
+                .setDescription('Qual o canal onde a mensagem será enviada? (opcional)')
                 .setRequired(false)),
 
     async execute(interaction) {
+        await interaction.deferReply({ ephemeral: true });
+
+        if (!await hasPermission(interaction, 'say')) {
+            const embed = new EmbedBuilder()
+                .setTitle('Comando de Mensagens')
+                .setDescription('Você não tem permissão para usar este comando.')
+                .setColor(colors.danger);
+            return interaction.editReply({ embeds: [embed] });
+        }
+
         const message = interaction.options.getString('mensagem');
         const targetChannel = interaction.options.getChannel('canal') || interaction.channel;
-        const member = interaction.member;
-        const allowedRoles = await CommandRoles.findAll({
-            where: { commandName: 'say' }
-        });
-        const allowedRoleIds = allowedRoles.map(role => role.roleId);
-        const hasPermission = allowedRoleIds.some(roleId => userRoles.includes(roleId));
-
-        if (!hasPermission && !member.permissions.has('ADMINISTRATOR')) {
-            return interaction.reply({ content: 'Você não tem permissão para usar este comando.', ephemeral: true });
-        }
 
         await interaction.deferReply({ ephemeral: true });
 
         try {
             if (!targetChannel.isTextBased()) {
-                return interaction.editReply({ content: 'Por favor, selecione um canal de texto válido.', ephemeral: true });
+                const embed = new EmbedBuilder()
+                    .setTitle('Comando de Mensagens')
+                    .setDescription(`Por favor, selecione um canal de texto válido.`)
+                    .setColor(colors.alert);
+                return interaction.editReply({ embeds: [embed] });
             }
 
             await targetChannel.send(message);
 
-            await interaction.editReply({ content: `Mensagem enviada para ${targetChannel}.`, ephemeral: true });
+            const embed = new EmbedBuilder()
+                .setTitle('Comando de Mensagens')
+                .setDescription(`Mensagem enviada para ${targetChannel}.`)
+                .setColor(colors.success);
+            return interaction.editReply({ embeds: [embed] });
         } catch (error) {
             console.error('Erro ao enviar a mensagem:', error);
-            await interaction.editReply({ content: 'Ocorreu um erro ao enviar a mensagem.', ephemeral: true });
+            const embed = new EmbedBuilder()
+                .setTitle('Comando de Mensagens')
+                .setDescription(`Ocorreu um erro ao processar o comando.`)
+                .setColor(colors.danger)
+                .addFields(
+                    { name: 'Mensagem de erro', value: error.message },
+                );
+            return interaction.editReply({ embeds: [embed] });
         }
     },
 };

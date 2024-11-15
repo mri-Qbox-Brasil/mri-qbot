@@ -1,7 +1,17 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../database/sequelize');
 
-const SupporterLogs = sequelize.define('supporter_logs', {
+const SupporterLogs = sequelize.define('supporterLogs', {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
+    },
+    supportId: {
+        type: DataTypes.UUID,
+        allowNull: false,
+        defaultValue: DataTypes.UUIDV4,
+      },
     userId: {
         type: DataTypes.STRING,
         allowNull: false,
@@ -15,7 +25,7 @@ const SupporterLogs = sequelize.define('supporter_logs', {
         allowNull: true,
     },
     actionType: {
-        type: DataTypes.ENUM('added', 'removed', 'expired'),
+        type: DataTypes.ENUM('added', 'removed', 'expired', 'updated'),
         allowNull: false,
     },
     performedBy: {

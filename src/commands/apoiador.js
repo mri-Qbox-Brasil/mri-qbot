@@ -1,11 +1,22 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const { EmbedBuilder } = require('discord.js');
-const { Sequelize } = require('sequelize');
-const moment = require('moment');
+const { SlashCommandBuilder, EmbedBuilder } = require('@discordjs/builders');
+const { colors } = require('../utils/constants');
 const sequelize = require('../database/sequelize');
 const Supporters = require('../model/supporterModel');
 const SupporterLogs = require('../model/supporterLogsModel');
-const CommandRoles = require('../model/commandRoleModel');
+const hasPermission = require('../utils/permissionUtils');
+const moment = require('moment');
+
+async function createLog(userId, guildId, roleId, actionType, performedBy, supportId, transaction) {
+    await SupporterLogs.create({
+        userId,
+        guildId,
+        roleId,
+        actionType,
+        performedBy,
+        supportId,
+        actionDate: new Date(),
+    }, { transaction });
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -15,6 +26,10 @@ module.exports = {
             option.setName('usuario')
                 .setDescription('Usuário para definir o apoio (obrigatório)')
                 .setRequired(true))
+        .addBooleanOption(option =>
+            option.setName('remover')
+                .setDescription('Remover o apoiador (opcional)')
+                .setRequired(false))
         .addRoleOption(option =>
             option.setName('cargo')
                 .setDescription('Nome do cargo (opcional)')
@@ -30,106 +45,175 @@ module.exports = {
 
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
-
         try {
-            const userRoles = interaction.member.roles.cache.map(role => role.id);
-            const allowedRoles = await CommandRoles.findAll({
-                where: { commandName: 'apoiador' }
-            });
-            const allowedRoleIds = allowedRoles.map(role => role.roleId);
-            const hasPermission = allowedRoleIds.some(roleId => userRoles.includes(roleId));
-
-            if (!hasPermission) {
-                return interaction.editReply({ content: 'Você não tem permissão para usar este comando.', ephemeral: true });
+            if (!await hasPermission(interaction, 'apoiador')) {
+                const embed = new EmbedBuilder()
+                    .setTitle('Status do Apoio')
+                    .setDescription('Você não tem permissão para usar este comando.')
+                    .setColor(colors.danger);
+                return interaction.editReply({ embeds: [embed] });
             }
 
-            const result = await sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE }, async transaction => {
+            const user = interaction.options.getUser('usuario');
+            const role = interaction.options.getRole('cargo') || null;
+            const remove = interaction.options.getBoolean('remover') || false;
+            const expiryInput = interaction.options.getString('validade') || null;
+            const supportUser = interaction.options.getUser('responsavel') || null;
 
-                const user = interaction.options.getUser('usuario');
-                const role = interaction.options.getRole('cargo') || null;
-                const expiryInput = interaction.options.getString('validade') || null;
-                const supportUser = interaction.options.getUser('responsavel') || null;
-                const guildMember = interaction.guild.members.cache.get(user.id);
+            const guildMember = await interaction.guild.members.fetch(user.id).catch(() => null);
+            if (!guildMember) {
+                const embed = new EmbedBuilder()
+                    .setTitle('Status do Apoio')
+                    .setDescription('O usuário especificado não é membro deste servidor.')
+                    .setColor(colors.danger);
+                return interaction.editReply({ embeds: [embed] });
+            }
 
-                let expiryDate = null;
-                if (expiryInput) {
-                    if (!isNaN(expiryInput)) {
-                        expiryDate = moment().add(parseInt(expiryInput), 'days').toDate();
-                    } else if (moment(expiryInput, 'DD/MM/YYYY', true).isValid()) {
-                        expiryDate = moment(expiryInput, 'DD/MM/YYYY').toDate();
-                    } else {
-                        throw new Error('Formato de data inválido. Use dias ou dd/mm/yyyy.');
+            let expiryDate = null;
+            if (expiryInput) {
+                if (!isNaN(expiryInput)) {
+                    expiryDate = moment().add(parseInt(expiryInput), 'days').toDate();
+                } else if (moment(expiryInput, 'DD/MM/YYYY', true).isValid()) {
+                    expiryDate = moment(expiryInput, 'DD/MM/YYYY').toDate();
+                } else {
+                    const embed = new EmbedBuilder()
+                        .setTitle('Status do Apoio')
+                        .setDescription('Formato de data inválido. Utilize DD/MM/YYYY ou dias.')
+                        .setColor(colors.danger);
+                    return interaction.editReply({ embeds: [embed] });
+                }
+            }
+
+            const transaction = await sequelize.transaction();
+            try {
+                const existingData = await Supporters.findOne({ where: { userId: user.id } });
+                const previousRoleId = existingData ? existingData.roleId : null;
+                const previousSupportUserId = existingData ? existingData.supportUserId : null;
+                const previousExpiryDate = existingData ? existingData.expirationDate : null;
+
+                if (!existingData && !remove && !role && !expiryDate && !supportUser) {
+                    const embed = new EmbedBuilder()
+                        .setTitle('Status do Apoio')
+                        .setDescription('Nenhum apoio corrente encontrado para este usuário.')
+                        .setColor(colors.info);
+                    return interaction.editReply({ embeds: [embed] });
+                }
+
+                if (remove) {
+                    if (previousRoleId) {
+                        await guildMember.roles.remove(previousRoleId);
                     }
+
+                    await Supporters.destroy({ where: { userId: user.id }, transaction });
+                    await createLog(interaction.user.id, interaction.guild.id, previousRoleId, 'removed', interaction.user.id, existingData.id, transaction);
+
+                    await transaction.commit();
+                    const embed = new EmbedBuilder()
+                        .setTitle('Status do Apoio')
+                        .setDescription('Apoio removido com sucesso.')
+                        .setColor(colors.success);
+                    return interaction.editReply({ embeds: [embed] });
                 }
 
-                const existingData = await Supporters.findOne({ where: { userId: user.id }, transaction });
-                let previousRoleId = existingData ? existingData.roleId : null;
-                let previousExpiryDate = existingData ? existingData.expirationDate : null;
-                let previousSupportUserId = existingData ? existingData.supportUserId : null;
+                const newRoleId = role ? role.id : previousRoleId;
+                const newSupportUserId = supportUser ? supportUser.id : previousSupportUserId;
+                const newExpiryDate = expiryDate ? expiryDate : previousExpiryDate;
 
-                let previousSupportUser = null;
-                if (previousSupportUserId) {
-                    previousSupportUser = await interaction.client.users.fetch(previousSupportUserId);
+                const noChanges =
+                    newRoleId === previousRoleId &&
+                    newSupportUserId === previousSupportUserId &&
+                    (newExpiryDate === previousExpiryDate || moment(newExpiryDate).isSame(previousExpiryDate));
+
+                if (noChanges) {
+                    await transaction.commit();
+                    const updatedData = await Supporters.findOne({ where: { userId: user.id } });
+                    const updatedRole = updatedData.roleId ? await interaction.guild.roles.fetch(updatedData.roleId) : null;
+                    const updatedSupportUser = updatedData.supportUserId ? await interaction.client.users.fetch(updatedData.supportUserId) : null;
+                    const updatedExpiryDate = updatedData.expirationDate ? moment(updatedData.expirationDate).format('DD/MM/YYYY') : 'Sem validade';
+
+                    const embed = new EmbedBuilder()
+                        .setTitle('Status do Apoio')
+                        .setColor(colors.info)
+                        .setDescription('Nenhum dado foi alterado.')
+                        .addFields(
+                            { name: 'Usuário', value: `<@${user.id}>` },
+                            { name: 'Apoio Atual', value: updatedRole ? `<@&${updatedRole.id}>` : 'Sem apoio', inline: true },
+                            { name: 'Suporte Atual', value: updatedSupportUser ? `<@${updatedSupportUser.id}>` : 'Nenhum', inline: true },
+                            { name: 'Data de Validade', value: updatedExpiryDate, inline: true }
+                        );
+
+                    return interaction.editReply({ embeds: [embed] });
                 }
 
-                let previousRole = null;
-                if (previousRoleId) {
-                    previousRole = await interaction.guild.roles.fetch(previousRoleId);
-                }
-
-                await SupporterLogs.create({
-                    userId: interaction.user.id,
-                    guildId: interaction.guild.id,
-                    roleId: role ? role.id : previousRoleId,
-                    actionType: role ? 'added' : 'removed',
-                    performedBy: interaction.user.id,
-                    actionDate: new Date(),
-                }, { transaction });
-
-                await Supporters.upsert({
+                const supporterRecord = await Supporters.upsert({
                     userId: user.id,
-                    roleId: role ? role.id : previousRoleId,
-                    expirationDate: expiryDate ? expiryDate : previousExpiryDate,
-                    supportUserId: supportUser ? supportUser.id : previousSupportUserId,
+                    roleId: newRoleId,
+                    expirationDate: newExpiryDate,
+                    supportUserId: newSupportUserId,
                     guildId: interaction.guild.id
                 }, { transaction });
 
+                await createLog(interaction.user.id, interaction.guild.id, newRoleId, 'updated', interaction.user.id, supporterRecord[0].id, transaction);
+
                 if (role) {
                     await guildMember.roles.add(role.id);
-                    if (previousRoleId && previousRoleId !== role.id) await guildMember.roles.remove(previousRoleId);
-                } else if (previousRoleId) {
-                    await guildMember.roles.remove(previousRoleId);
+                    if (previousRoleId && previousRoleId !== role.id) {
+                        await guildMember.roles.remove(previousRoleId);
+                    }
                 }
 
-                return {
-                    previousRole,
-                    previousSupportUser,
-                    previousExpiryDate,
-                    role,
-                    supportUser,
-                    expiryDate
-                };
-            });
+                await transaction.commit();
 
-            const embed = new EmbedBuilder()
-                .setColor(0x0099ff)
-                .setTitle('Apoiador atualizado')
-                .addFields(
-                    { name: 'Apoiador', value: `<@${interaction.options.getUser('usuario').id}>` },
-                    { name: 'Nível Anterior', value: result.previousRole ? `<@&${result.previousRole.id}>` : 'Sem apoio', inline: true },
-                    { name: 'Suporte Anterior', value: result.previousSupportUser ? `<@${result.previousSupportUser.id}>` : 'Nenhum', inline: true },
-                    { name: 'Data de Validade Anterior', value: result.previousExpiryDate ? moment(result.previousExpiryDate).format('DD/MM/YYYY') : 'Sem validade', inline: true },
-                    { name: 'Nível Atual', value: result.role ? `<@&${result.role.id}>` : 'Sem apoio', inline: true },
-                    { name: 'Suporte Atual', value: result.supportUser ? `<@${result.supportUser.id}>` : 'Nenhum', inline: true },
-                    { name: 'Data de Validade', value: result.expiryDate ? moment(result.expiryDate).format('DD/MM/YYYY') : 'Sem validade', inline: true }
-                )
-                .setTimestamp();
+                const updatedData = await Supporters.findOne({ where: { userId: user.id } });
+                const updatedRole = updatedData.roleId ? await interaction.guild.roles.fetch(updatedData.roleId) : null;
+                const updatedSupportUser = updatedData.supportUserId ? await interaction.client.users.fetch(updatedData.supportUserId) : null;
+                const updatedExpiryDate = updatedData.expirationDate ? moment(updatedData.expirationDate).format('DD/MM/YYYY') : 'Sem validade';
 
-            await interaction.editReply({ embeds: [embed] });
+                if (existingData) {
+
+                    const embed = new EmbedBuilder()
+                        .setColor(colors.success)
+                        .setTitle('Status do Apoio')
+                        .setDescription('Apoio atualizado com sucesso.')
+                        .addFields(
+                            { name: 'Usuário', value: `<@${user.id}>` },
+                            { name: 'Apoio Anterior', value: previousRoleId ? `<@&${previousRoleId}>` : 'Sem apoio', inline: true },
+                            { name: 'Suporte Anterior', value: previousSupportUserId ? `<@${previousSupportUserId}>` : 'Nenhum', inline: true },
+                            { name: 'Data de Validade Anterior', value: previousExpiryDate ? moment(previousExpiryDate).format('DD/MM/YYYY') : 'Sem validade', inline: true },
+                            { name: 'Apoio Atual', value: updatedRole ? `<@&${updatedRole.id}>` : 'Sem apoio', inline: true },
+                            { name: 'Suporte Atual', value: updatedSupportUser ? `<@${updatedSupportUser.id}>` : 'Nenhum', inline: true },
+                            { name: 'Data de Validade', value: updatedExpiryDate, inline: true }
+                        );
+                        return interaction.editReply({ embeds: [embed] });
+                } else {
+                    const embed = new EmbedBuilder()
+                        .setColor(colors.success)
+                        .setTitle('Status do Apoio')
+                        .setDescription('Apoio adicionado com sucesso.')
+                        .addFields(
+                            { name: 'Usuário', value: `<@${user.id}>` },
+                            { name: 'Apoio Atual', value: updatedRole ? `<@&${updatedRole.id}>` : 'Sem apoio', inline: true },
+                            { name: 'Suporte Atual', value: updatedSupportUser ? `<@${updatedSupportUser.id}>` : 'Nenhum', inline: true },
+                            { name: 'Data de Validade', value: updatedExpiryDate, inline: true }
+                        );
+                    return interaction.editReply({ embeds: [embed] });
+                }
+
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
 
         } catch (error) {
             console.error('Erro ao executar o comando:', error);
-            await interaction.editReply({ content: `Ocorreu um erro ao processar o comando: ${error.message}`, ephemeral: true });
+            const embed = new EmbedBuilder()
+                .setTitle('Status do Apoio')
+                .setDescription(`Ocorreu um erro ao processar o comando.`)
+                .setColor(colors.danger)
+                .addFields(
+                    { name: 'Mensagem de erro', value: error.message },
+                );
+            return interaction.editReply({ embeds: [embed] });
         }
     },
 };

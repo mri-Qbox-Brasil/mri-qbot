@@ -6,7 +6,9 @@ const Supporters = require('./model/supporterModel');
 const SupporterLogs = require('./model/supporterLogsModel');
 
 async function checkExpiredRoles(client) {
-    const now = moment().format('YYYY-MM-DD');
+    const now = moment().toDate();
+    const transaction = await sequelize.transaction();
+
     try {
         const expiredSupporters = await Supporters.findAll({
             where: {
@@ -15,49 +17,50 @@ async function checkExpiredRoles(client) {
                 },
                 roleId: { [Op.ne]: null },
             },
+            transaction,
         });
 
         for (const supporter of expiredSupporters) {
-            const transaction = await sequelize.transaction();
-            try {
-                const guild = client.guilds.cache.get(supporter.guildId);
-                if (!guild) continue;
+            const guild = await client.guilds.fetch(supporter.guildId).catch(() => null);
+            if (!guild) continue;
 
-                const member = guild.members.cache.get(supporter.userId);
-                const role = guild.roles.cache.get(supporter.roleId);
-                const supportUser = supporter.supportUserId ? await guild.members.fetch(supporter.supportUserId) : null;
+            const member = await guild.members.fetch(supporter.userId).catch(() => null);
+            const role = supporter.roleId ? await guild.roles.fetch(supporter.roleId).catch(() => null) : null;
+            const supportUser = supporter.supportUserId ? await guild.members.fetch(supporter.supportUserId).catch(() => null) : null;
 
-                if (member && role) {
-                    await member.roles.remove(role);
-                    console.log(`Cargo ${role.name} removido de ${member.user.username}`);
+            if (member && role) {
+                // Remover o cargo do apoiador
+                await member.roles.remove(role).catch(err => console.error(`Erro ao remover cargo: ${err}`));
+                console.log(`Cargo ${role.name} removido de ${member.user.username}`);
 
-                    if (supportUser) {
-                        await supportUser.send(`O cargo ${role.name} de ${member.user.username} expirou.`);
-                    }
-
-                    await SupporterLogs.create({
-                        userId: supporter.userId,
-                        guildId: supporter.guildId,
-                        roleId: supporter.roleId,
-                        actionType: 'expired',
-                        performedBy: 'system',
-                        actionDate: new Date(),
-                    }, { transaction });
-
-                    await supporter.update({
-                        roleId: null,
-                        expirationDate: null,
-                    }, { transaction });
+                // Tentar enviar mensagem para o suporte
+                if (supportUser) {
+                    await supportUser.send(`O cargo ${role.name} de ${member.user.username} expirou.`).catch(() => {
+                        console.log(`Não foi possível enviar DM para ${supportUser.user.username}`);
+                    });
                 }
-                await transaction.commit();
-            } catch (error) {
-                await transaction.rollback();
-                console.error('Erro ao registrar ação:', error);
+
+                // Registrar log de expiração
+                await SupporterLogs.create({
+                    userId: supporter.userId,
+                    guildId: supporter.guildId,
+                    roleId: supporter.roleId,
+                    actionType: 'expired',
+                    performedBy: 'system',
+                    actionDate: new Date(),
+                }, { transaction });
+
+                // Remover o registro da tabela Supporters
+                await Supporters.destroy({
+                    where: { userId: supporter.userId },
+                    transaction,
+                });
             }
         }
-    }
 
-    catch (error) {
+        await transaction.commit();
+    } catch (error) {
+        await transaction.rollback();
         console.error('Erro ao verificar cargos expirados:', error);
     }
 }

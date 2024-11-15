@@ -1,7 +1,8 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const { EmbedBuilder } = require('discord.js');
-const moment = require('moment');
+const { SlashCommandBuilder, EmbedBuilder } = require('@discordjs/builders');
+const { colors } = require('../utils/constants');
 const Supporters = require('../model/supporterModel');
+const hasPermission = require('../utils/permissionUtils');
+const moment = require('moment');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -13,43 +14,73 @@ module.exports = {
 
         try {
             const user = interaction.user;
+            const guildName = interaction.guild.name;
+
+            if (!await hasPermission(interaction, 'meuapoio')) {
+                const embed = new EmbedBuilder()
+                    .setTitle('Status do Apoio')
+                    .setDescription('Você não tem permissão para usar este comando.')
+                    .setColor(colors.danger);
+                return interaction.editReply({ embeds: [embed] });
+            }
+
+            // Busca o registro de apoio do usuário
             const supporterData = await Supporters.findOne({
                 where: { userId: user.id, guildId: interaction.guild.id }
             });
 
+            // Caso não tenha apoio registrado
             if (!supporterData) {
-                return interaction.editReply({
-                    content: 'Você não está apoiando atualmente.',
-                    ephemeral: true
-                });
+                const embed = new EmbedBuilder()
+                    .setTitle('Status do Apoio')
+                    .setDescription('Você não possui um apoio registrado no momento.')
+                    .setColor(colors.info);
+                return interaction.editReply({ embeds: [embed] });
             }
 
-            const role = await interaction.guild.roles.fetch(supporterData.roleId);
+            // Busca os detalhes do cargo e do responsável pelo apoio
+            const role = supporterData.roleId ? await interaction.guild.roles.fetch(supporterData.roleId).catch(() => null) : null;
             const supportUser = supporterData.supportUserId
-                ? await interaction.client.users.fetch(supporterData.supportUserId)
+                ? await interaction.client.users.fetch(supporterData.supportUserId).catch(() => null)
                 : null;
             const expiryDate = supporterData.expirationDate
                 ? moment(supporterData.expirationDate).format('DD/MM/YYYY')
                 : 'Sem prazo definido';
 
+            // Criação dos campos para o embed
+            const fields = [
+                { name: 'Apoio atual', value: role ? `<@&${role.id}>` : 'Sem apoio registrado', inline: true },
+                { name: 'Data de validade', value: expiryDate, inline: true }
+            ];
+
+            // Adiciona o responsável pelo suporte se existir
+            if (supportUser) {
+                fields.push({
+                    name: 'Responsável pelo Suporte',
+                    value: `<@${supportUser.id}>`,
+                    inline: true
+                });
+            }
+
+            // Criação do embed de resposta
             const embed = new EmbedBuilder()
-                .setColor(0x0099ff)
-                .setTitle('Suas Informações de Apoio')
-                .addFields(
-                    { name: 'Nível', value: role ? `<@&${role.id}>` : 'Sem apoio', inline: true },
-                    { name: 'Válido até', value: expiryDate, inline: true },
-                    { name: 'Responsável pelo Suporte', value: supportUser ? `<@${supportUser.id}>` : 'Nenhum', inline: true }
-                )
+                .setTitle(`Informações de Apoio para ${user.username}`)
+                .setDescription(`Detalhes do seu apoio no servidor **${guildName}**:`)
+                .setColor(colors.info)
+                .addFields(fields)
+                .setFooter({ text: `Comando executado por ${interaction.user.tag}` })
                 .setTimestamp();
 
+            // Responde com o embed
             await interaction.editReply({ embeds: [embed], ephemeral: true });
 
         } catch (error) {
-            console.error('Erro ao executar o comando:', error);
-            await interaction.editReply({
-                content: 'Ocorreu um erro ao buscar suas informações.',
-                ephemeral: true
-            });
+            console.error('Erro ao executar o comando /meuapoio:', error);
+            const embed = new EmbedBuilder()
+                .setTitle('Status do Apoio')
+                .setDescription('Ocorreu um erro ao buscar suas informações de apoio. Tente novamente mais tarde.')
+                .setColor(colors.danger);
+            return interaction.editReply({ embeds: [embed] });
         }
     },
 };
