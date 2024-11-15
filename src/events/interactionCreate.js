@@ -9,7 +9,7 @@ module.exports = {
                 return;
             }
             if (interaction.isAutocomplete()) {
-                if (interaction.commandName === 'cmdperm') {
+                if (interaction.commandName === 'perm') {
                     const command = client.commands.get(interaction.commandName);
                     if (!command) return;
                     await command.autocomplete(interaction);
