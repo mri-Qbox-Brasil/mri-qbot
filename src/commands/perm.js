@@ -1,48 +1,74 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { colors } = require('../utils/constants');
+const { EmbedColors, createEmbed } = require('../utils/embedUtils');
+const { ActionType } = require('../utils/constants');
 const CommandRoles = require('../model/commandRoleModel');
 const hasPermission = require('../utils/permissionUtils');
 
 async function getPermissionsDescription(commandName) {
     const roles = await CommandRoles.findAll({ where: { commandName } });
-    if (roles.length === 0) {
-        return 'Nenhuma permissão configurada.';
-    }
-    return roles.map(role => `• <@&${role.roleId}>`).join('\n');
+    return roles.length > 0
+        ? roles.map(role => `• <@&${role.roleId}>`).join('\n')
+        : 'Nenhuma permissão configurada.';
 }
 
-async function createPermissionEmbed(action, commandName, roleName, description) {
-    return new EmbedBuilder()
-        .setTitle('Gerenciamento de Permissões')
-        .setDescription(`${action} o cargo **${roleName}** para o comando **${commandName}**.`)
-        .addFields({ name: 'Permissões Atualizadas', value: description })
-        .setColor(colors.success);
+async function createPermissionEmbed(action, commandName, roleId = null, details = '', color) {
+    const permissionsDescription = await getPermissionsDescription(commandName);
+
+    const fields = [];
+
+    if (commandName) {
+        fields.push(
+            { name: 'Comando', value: `\`${commandName}\``, inline: true },
+        );
+        if (roleId) {
+            fields.push(
+                { name: 'Cargo', value: `<@&${roleId}>`, inline: true },
+            );
+        }
+    }
+
+    if (action !== ActionType.LIST) {
+        fields.push({ name: 'Detalhes', value: details });
+    }
+
+    if (action !== ActionType.ERROR) {
+        fields.push({ name: 'Cargos Permitidos', value: permissionsDescription });
+    } else {
+        color = EmbedColors.DANGER;
+    }
+
+    return createEmbed({
+        title: 'Gerenciamento de Permissões',
+        description: `Resultado da operação: **${action}**`,
+        color,
+        fields
+    });
 }
 
 async function handleAddPermission(commandName, role, guildId) {
     const existingRole = await CommandRoles.findOne({ where: { commandName, roleId: role.id } });
 
     if (existingRole) {
-        const description = await getPermissionsDescription(commandName);
-        return createPermissionEmbed('Erro ao adicionar', commandName, role.name, description);
+        return createPermissionEmbed(ActionType.ADD, commandName, role.id, 'Cargo ja possui permissão para o comando.', EmbedColors.INFO);
     }
 
     await CommandRoles.create({ commandName, roleId: role.id, guildId });
-    const description = await getPermissionsDescription(commandName);
-    return createPermissionEmbed('Adicionado', commandName, role.name, description);
+    return createPermissionEmbed(ActionType.ADD, commandName, role.id, 'Sucesso na operação.', EmbedColors.SUCCESS);
 }
 
 async function handleRemovePermission(commandName, role) {
-    const row = await CommandRoles.findOne({ where: { commandName, roleId: role.id } });
+    const existingRole = await CommandRoles.findOne({ where: { commandName, roleId: role.id } });
 
-    if (!row) {
-        const description = await getPermissionsDescription(commandName);
-        return createPermissionEmbed('Erro ao remover', commandName, role.name, description);
+    if (!existingRole) {
+        return createPermissionEmbed(ActionType.REMOVE, commandName, role.id, 'Cargo não possui permissão para o comando.', EmbedColors.INFO);
     }
 
-    await row.destroy();
-    const description = await getPermissionsDescription(commandName);
-    return createPermissionEmbed('Removido', commandName, role.name, description);
+    await existingRole.destroy();
+    return createPermissionEmbed(ActionType.REMOVE, commandName, role.id, 'Permissão removida com sucesso.', EmbedColors.SUCCESS);
+}
+
+async function handleListPermissions(commandName) {
+    return createPermissionEmbed(ActionType.LIST, null, null, '', EmbedColors.INFO);
 }
 
 module.exports = {
@@ -54,71 +80,59 @@ module.exports = {
                 .setDescription('Adiciona um cargo permitido para um comando')
                 .addStringOption(option =>
                     option.setName('comando')
-                        .setDescription('Nome do comando (obrigatório)')
+                        .setDescription('Nome do comando')
                         .setRequired(true)
                         .setAutocomplete(true))
                 .addRoleOption(option =>
                     option.setName('cargo')
-                        .setDescription('Cargo a ser adicionado (obrigatório)')
+                        .setDescription('Cargo a ser adicionado')
                         .setRequired(true)))
         .addSubcommand(subcommand =>
             subcommand.setName('remove')
                 .setDescription('Remove um cargo permitido de um comando')
                 .addStringOption(option =>
                     option.setName('comando')
-                        .setDescription('Nome do comando (obrigatório)')
+                        .setDescription('Nome do comando')
                         .setRequired(true)
                         .setAutocomplete(true))
                 .addRoleOption(option =>
                     option.setName('cargo')
-                        .setDescription('Cargo a ser removido (obrigatório)')
+                        .setDescription('Cargo a ser removido')
                         .setRequired(true)))
         .addSubcommand(subcommand =>
             subcommand.setName('list')
                 .setDescription('Lista os cargos permitidos para um comando')
                 .addStringOption(option =>
                     option.setName('comando')
-                        .setDescription('Nome do comando (obrigatório)')
+                        .setDescription('Nome do comando')
                         .setRequired(true)
                         .setAutocomplete(true))),
 
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
+
+        if (!await hasPermission(interaction, 'perm')) {
+            const embed = await createPermissionEmbed(ActionType.ERROR, null, null, 'Você não tem permissão para usar este comando.');
+            return interaction.editReply({ embeds: [embed] });
+        }
+
         const subcommand = interaction.options.getSubcommand();
         const commandName = interaction.options.getString('comando');
         const role = interaction.options.getRole('cargo');
 
-        if (!await hasPermission(interaction, 'perm')) {
-            const embed = new EmbedBuilder()
-                .setTitle('Gerenciamento de Permissões')
-                .setDescription('Você não tem permissão para usar este comando.')
-                .setColor(colors.danger);
-            return interaction.editReply({ embeds: [embed] });
-        }
+        const handlers = {
+            add: () => handleAddPermission(commandName, role, interaction.guild.id),
+            remove: () => handleRemovePermission(commandName, role),
+            list: () => handleListPermissions(commandName)
+        };
 
         try {
-            let embed;
-            if (subcommand === 'add') {
-                embed = await handleAddPermission(commandName, role, interaction.guild.id);
-            } else if (subcommand === 'remove') {
-                embed = await handleRemovePermission(commandName, role);
-            } else if (subcommand === 'list') {
-                const description = await getPermissionsDescription(commandName);
-                embed = new EmbedBuilder()
-                    .setTitle('Permissões Configuradas')
-                    .setDescription(`Permissões para o comando **${commandName}**:\n${description}`)
-                    .setColor(colors.success);
-            }
-
+            const embed = await handlers[subcommand]();
             return interaction.editReply({ embeds: [embed] });
         } catch (error) {
             console.error(`Erro ao processar o subcomando ${subcommand}:`, error);
-            const errorEmbed = new EmbedBuilder()
-                .setTitle('Gerenciamento de Permissões')
-                .setDescription('Ocorreu um erro ao processar o comando.')
-                .setColor(colors.danger)
-                .addFields({ name: 'Erro', value: error.message });
-            return interaction.editReply({ embeds: [errorEmbed] });
+            const embed = await createPermissionEmbed(ActionType.ERROR, null, error.message, 'Ocorreu um erro ao processar o comando.');
+            return interaction.editReply({ embeds: [embed] });
         }
     },
 
@@ -129,7 +143,9 @@ module.exports = {
             const filteredCommands = commands
                 .filter(cmd => cmd.toLowerCase().includes(focusedOption.value.toLowerCase()))
                 .slice(0, 10);
-            await interaction.respond(filteredCommands.map(cmd => ({ name: cmd, value: cmd })));
+            await interaction.respond(filteredCommands.length > 0
+                ? filteredCommands.map(cmd => ({ name: cmd, value: cmd }))
+                : [{ name: 'Nenhum comando encontrado', value: '' }]);
         }
     },
 };

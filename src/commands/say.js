@@ -35,7 +35,7 @@ module.exports = {
                 const embed = new EmbedBuilder()
                     .setTitle('Comando de Mensagens')
                     .setDescription(`Por favor, selecione um canal de texto válido.`)
-                    .setColor(colors.alert);
+                    .setColor(colors.warning);
                 return interaction.editReply({ embeds: [embed] });
             }
 
