@@ -11,7 +11,7 @@ const SupporterLogs = sequelize.define('supporterLogs', {
         type: DataTypes.UUID,
         allowNull: false,
         defaultValue: DataTypes.UUIDV4,
-      },
+    },
     userId: {
         type: DataTypes.STRING,
         allowNull: false,
