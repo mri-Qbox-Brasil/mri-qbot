@@ -1,8 +1,17 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('@discordjs/builders');
-const { colors } = require('../utils/constants');
+const { SlashCommandBuilder } = require('@discordjs/builders');
+const { EmbedColors, createEmbed } = require('../utils/embedUtils');
 const Supporters = require('../model/supporterModel');
 const hasPermission = require('../utils/permissionUtils');
 const moment = require('moment');
+
+async function createSupportEmbed(description, color, fields = []) {
+    return await createEmbed({
+        title: 'Status do Apoio',
+        description,
+        color,
+        fields
+    });
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -13,16 +22,17 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            const user = interaction.user;
-            const guildName = interaction.guild.name;
-
+            // Verifica permissões
             if (!await hasPermission(interaction, 'meuapoio')) {
-                const embed = new EmbedBuilder()
-                    .setTitle('Status do Apoio')
-                    .setDescription('Você não tem permissão para usar este comando.')
-                    .setColor(colors.danger);
+                const embed = await createSupportEmbed(
+                    'Você não tem permissão para usar este comando.',
+                    EmbedColors.DANGER
+                );
                 return interaction.editReply({ embeds: [embed] });
             }
+
+            const user = interaction.user;
+            const guildName = interaction.guild.name;
 
             // Busca o registro de apoio do usuário
             const supporterData = await Supporters.findOne({
@@ -31,15 +41,17 @@ module.exports = {
 
             // Caso não tenha apoio registrado
             if (!supporterData) {
-                const embed = new EmbedBuilder()
-                    .setTitle('Status do Apoio')
-                    .setDescription('Você não possui um apoio registrado no momento.')
-                    .setColor(colors.info);
+                const embed = await createSupportEmbed(
+                    'Você não possui um apoio registrado no momento.',
+                    EmbedColors.INFO
+                );
                 return interaction.editReply({ embeds: [embed] });
             }
 
             // Busca os detalhes do cargo e do responsável pelo apoio
-            const role = supporterData.roleId ? await interaction.guild.roles.fetch(supporterData.roleId).catch(() => null) : null;
+            const role = supporterData.roleId
+                ? await interaction.guild.roles.fetch(supporterData.roleId).catch(() => null)
+                : null;
             const supportUser = supporterData.supportUserId
                 ? await interaction.client.users.fetch(supporterData.supportUserId).catch(() => null)
                 : null;
@@ -63,23 +75,21 @@ module.exports = {
             }
 
             // Criação do embed de resposta
-            const embed = new EmbedBuilder()
-                .setTitle(`Informações de Apoio para ${user.username}`)
-                .setDescription(`Detalhes do seu apoio no servidor **${guildName}**:`)
-                .setColor(colors.info)
-                .addFields(fields)
-                .setFooter({ text: `Comando executado por ${interaction.user.tag}` })
-                .setTimestamp();
+            const embed = await createSupportEmbed(
+                `Detalhes do seu apoio no servidor **${guildName}**:`,
+                EmbedColors.INFO,
+                fields
+            );
 
             // Responde com o embed
-            await interaction.editReply({ embeds: [embed], ephemeral: true });
+            await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
             console.error('Erro ao executar o comando /meuapoio:', error);
-            const embed = new EmbedBuilder()
-                .setTitle('Status do Apoio')
-                .setDescription('Ocorreu um erro ao buscar suas informações de apoio. Tente novamente mais tarde.')
-                .setColor(colors.danger);
+            const embed = await createSupportEmbed(
+                'Ocorreu um erro ao buscar suas informações de apoio. Tente novamente mais tarde.',
+                EmbedColors.DANGER
+            );
             return interaction.editReply({ embeds: [embed] });
         }
     },
