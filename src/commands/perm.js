@@ -130,7 +130,7 @@ module.exports = {
             const embed = await handlers[subcommand]();
             return interaction.editReply({ embeds: [embed] });
         } catch (error) {
-            console.error(`Erro ao processar o subcomando ${subcommand}:`, error);
+            console.error(`Erro ao processar o subcomando /perm ${subcommand}:`, error);
             const embed = await createPermissionEmbed(ActionType.ERROR, null, error.message, 'Ocorreu um erro ao processar o comando.');
             return interaction.editReply({ embeds: [embed] });
         }
