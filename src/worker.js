@@ -5,22 +5,57 @@ const sequelize = require('./database/sequelize');
 const Supporters = require('./model/supporterModel');
 const SupporterLogs = require('./model/supporterLogsModel');
 
-async function checkExpiredRoles(client) {
-    const now = moment().toDate();
-    const transaction = await sequelize.transaction();
-
-    try {
-        const expiredSupporters = await Supporters.findAll({
+async function expirySupport(userId, expirationDate, transaction) {
+    const [affectedRows] = await Supporters.update(
+        { active: false },
+        {
             where: {
-                expirationDate: {
-                    [Op.lte]: now,
-                },
-                roleId: { [Op.ne]: null },
+                userId,
+                expirationDate: { [Op.lte]: expirationDate },
             },
             transaction,
-        });
+        }
+    );
 
-        for (const supporter of expiredSupporters) {
+    if (affectedRows === 0) {
+        console.log(`Nenhum registro atualizado para userId: ${userId}`);
+    }
+    return affectedRows;
+}
+
+async function logRoleExpiration(supporter, transaction) {
+    await SupporterLogs.create({
+        supportId: supporter.id,
+        userId: supporter.userId,
+        guildId: supporter.guildId,
+        roleId: supporter.roleId,
+        actionType: 'expired',
+        performedBy: 'system',
+        actionDate: new Date(),
+    }, { transaction });
+}
+
+async function sendSupportMessage(supportUser, roleName, username) {
+    try {
+        await supportUser.send(`O cargo ${roleName} de ${username} expirou.`);
+    } catch (error) {
+        console.error(`Erro ao enviar DM para ${supportUser?.user?.username || 'desconhecido'}: ${error.message}`);
+    }
+}
+
+async function checkExpiredRoles(client) {
+    const now = moment().toDate();
+    const expiredSupporters = await Supporters.findAll({
+        where: {
+            expirationDate: { [Op.lte]: now },
+            roleId: { [Op.ne]: null },
+            active: true
+        },
+    });
+
+    for (const supporter of expiredSupporters) {
+        const transaction = await sequelize.transaction();
+        try {
             const guild = await client.guilds.fetch(supporter.guildId).catch(() => null);
             if (!guild) continue;
 
@@ -29,44 +64,26 @@ async function checkExpiredRoles(client) {
             const supportUser = supporter.supportUserId ? await guild.members.fetch(supporter.supportUserId).catch(() => null) : null;
 
             if (member && role) {
-                // Remover o cargo do apoiador
-                await member.roles.remove(role).catch(err => console.error(`Erro ao remover cargo: ${err}`));
-                console.log(`Cargo ${role.name} removido de ${member.user.username}`);
+                await member.roles.remove(role).catch(err =>
+                    console.error(`Erro ao remover cargo ${role.name} de ${member.user.username}: ${err.message}`)
+                );
 
-                // Tentar enviar mensagem para o suporte
                 if (supportUser) {
-                    await supportUser.send(`O cargo ${role.name} de ${member.user.username} expirou.`).catch(() => {
-                        console.log(`Não foi possível enviar DM para ${supportUser.user.username}`);
-                    });
+                    await sendSupportMessage(supportUser, role.name, member.user.username);
                 }
 
-                // Registrar log de expiração
-                await SupporterLogs.create({
-                    userId: supporter.userId,
-                    guildId: supporter.guildId,
-                    roleId: supporter.roleId,
-                    actionType: 'expired',
-                    performedBy: 'system',
-                    actionDate: new Date(),
-                }, { transaction });
-
-                // Remover o registro da tabela Supporters
-                await Supporters.destroy({
-                    where: { userId: supporter.userId },
-                    transaction,
-                });
+                await expirySupport(supporter.userId, supporter.expirationDate, transaction);
+                await logRoleExpiration(supporter, transaction);
             }
+            await transaction.commit();
+        } catch (error) {
+            console.error(`Erro ao processar supporter ${supporter.userId}:`, error);
+            await transaction.rollback();
         }
-
-        await transaction.commit();
-    } catch (error) {
-        await transaction.rollback();
-        console.error('Erro ao verificar cargos expirados:', error);
     }
 }
 
-function startRoleCheck(client, checkPeriod) {
-    checkPeriod = checkPeriod || '*/5 * * * *';
+function startRoleCheck(client, checkPeriod = '*/1 * * * *') {
     cron.schedule(checkPeriod, () => {
         console.log('Verificando cargos expirados...');
         checkExpiredRoles(client);

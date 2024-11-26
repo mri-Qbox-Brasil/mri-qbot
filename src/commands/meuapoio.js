@@ -36,7 +36,7 @@ module.exports = {
 
             // Busca o registro de apoio do usuário
             const supporterData = await Supporters.findOne({
-                where: { userId: user.id, guildId: interaction.guild.id }
+                where: { userId: user.id, guildId: interaction.guild.id, active: true }
             });
 
             // Caso não tenha apoio registrado

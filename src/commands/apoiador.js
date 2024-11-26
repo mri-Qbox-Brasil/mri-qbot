@@ -41,13 +41,25 @@ async function getSupporterData(userId) {
     return await Supporters.findOne({ where: { userId } });
 }
 
-async function updateSupporterData(userId, roleId, expiryDate, supportUserId, guildId, transaction) {
-    return await Supporters.upsert({
+async function updateSupporterData(userId, roleId, expirationDate, supportUserId, guildId, active, transaction) {
+    return await Supporters.update({
         userId,
         roleId,
-        expirationDate: expiryDate,
+        expirationDate,
         supportUserId,
-        guildId
+        guildId,
+        active
+    }, { transaction });
+}
+
+async function insertSupporterData(userId, roleId, expirationDate, supportUserId, guildId, active, transaction) {
+    return await Supporters.create({
+        userId,
+        roleId,
+        expirationDate,
+        supportUserId,
+        guildId,
+        active
     }, { transaction });
 }
 
@@ -210,7 +222,7 @@ async function handleAdd(interaction) {
 
     const transaction = await sequelize.transaction();
     try {
-        const supporterRecord = await updateSupporterData(user.id, role ? role.id : null, expiryDate, supportUser ? supportUser.id : null, interaction.guild.id, transaction);
+        const supporterRecord = await insertSupporterData(user.id, role ? role.id : null, expiryDate, supportUser ? supportUser.id : null, interaction.guild.id, true, transaction);
 
         if (role) {
             await guildMember.roles.add(role.id);
@@ -279,7 +291,7 @@ async function handleEdit(interaction) {
             await guildMember.roles.add(role.id);
         }
 
-        await updateSupporterData(user.id, role ? role.id : supporterData.roleId, expiryDate || supporterData.expirationDate, supportUser ? supportUser.id : supporterData.supportUserId, interaction.guild.id, transaction);
+        await updateSupporterData(user.id, role ? role.id : supporterData.roleId, expiryDate || supporterData.expirationDate, supportUser ? supportUser.id : supporterData.supportUserId, interaction.guild.id, supporterData.active, transaction);
 
         await createLog(supporterData.id, interaction.user.id, interaction.guild.id, role?.id, 'edited', interaction.user.id, transaction);
         await transaction.commit();
@@ -313,17 +325,28 @@ async function handleRemove(interaction) {
         await guildMember.roles.remove(supporterData.roleId);
     }
 
-    await Supporters.destroy({ where: { userId: user.id } });
-    await createLog(supporterData.id, interaction.user.id, interaction.guild.id, supporterData.roleId, 'removed', interaction.user.id, null);
-    const embed = await createSupporterEmbed('Apoio removido com sucesso.', EmbedColors.SUCCESS);
-    return interaction.editReply({
-        embeds: [embed]
-    });
+    const transaction = await sequelize.transaction();
+    try {
+        await updateSupporterData(user.id, supporterData.roleId, supporterData.expirationDate, supporterData.supportUserId, interaction.guild.id, false, transaction);
+        await createLog(supporterData.id, interaction.user.id, interaction.guild.id, supporterData.roleId, 'removed', interaction.user.id, transaction);
+        await transaction.commit();
+        const embed = await createSupporterEmbed('Apoio removido com sucesso.', EmbedColors.SUCCESS);
+        return interaction.editReply({
+            embeds: [embed]
+        });
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Erro ao remover apoio:', error);
+        const embed = await createSupporterEmbed('Ocorreu um erro ao processar o comando.', EmbedColors.DANGER);
+        return interaction.editReply({
+            embeds: [embed]
+        });
+    }
 }
 
 // Função para "list" todos os apoiadores
 async function handleList(interaction) {
-    const supporters = await Supporters.findAll({ where: { guildId: interaction.guild.id } });
+    const supporters = await Supporters.findAll({ where: { guildId: interaction.guild.id, active: true } });
 
     // Caso não existam apoiadores
     if (supporters.length === 0) {

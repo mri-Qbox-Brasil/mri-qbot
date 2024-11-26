@@ -4,11 +4,11 @@ const sequelize = require('../database/sequelize');
 const Supporters = sequelize.define('supporters', {
     id: {
         type: DataTypes.UUID,
-        defaultValue: DataTypes.UUIDV4
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true,
     },
     userId: {
         type: DataTypes.STRING,
-        primaryKey: true,
         allowNull: false
     },
     roleId: {
@@ -26,6 +26,10 @@ const Supporters = sequelize.define('supporters', {
     guildId: {
         type: DataTypes.STRING,
         allowNull: false
+    },
+    active: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
     }
 });
 
