@@ -238,9 +238,8 @@ async function handleEdit(interaction) {
     const expiryInput = interaction.options.getString('validade') || null;
     const supportUser = interaction.options.getUser('responsavel') || null;
 
-    let expiryDate = parseExpiryDate(expiryInput);
-    if (!expiryDate) {
-        const embed = await createSupporterEmbed('Formato de data inválido. Utilize DD/MM/YYYY ou dias.', EmbedColors.DANGER);
+    if (!role && !expiryInput && !supportUser) {
+        const embed = await createSupporterEmbed('Nenhuma informação foi fornecida.', EmbedColors.WARNING);
         return interaction.editReply({
             embeds: [embed]
         });
@@ -262,6 +261,14 @@ async function handleEdit(interaction) {
         });
     }
 
+    let expiryDate = parseExpiryDate(expiryInput);
+    if (expiryInput && !expiryDate) {
+        const embed = await createSupporterEmbed('Formato de data inválido. Utilize DD/MM/YYYY ou dias.', EmbedColors.DANGER);
+        return interaction.editReply({
+            embeds: [embed]
+        });
+    }
+
     const transaction = await sequelize.transaction();
     try {
         if (supporterData.roleId) {
@@ -272,7 +279,7 @@ async function handleEdit(interaction) {
             await guildMember.roles.add(role.id);
         }
 
-        await updateSupporterData(user.id, role ? role.id : null, expiryDate, supportUser ? supportUser.id : null, interaction.guild.id, transaction);
+        await updateSupporterData(user.id, role ? role.id : supporterData.roleId, expiryDate || supporterData.expirationDate, supportUser ? supportUser.id : supporterData.supportUserId, interaction.guild.id, transaction);
 
         await createLog(supporterData.id, interaction.user.id, interaction.guild.id, role?.id, 'edited', interaction.user.id, transaction);
         await transaction.commit();
@@ -352,7 +359,7 @@ async function handleList(interaction) {
         (a, b) => b[1].users.length - a[1].users.length
     );
 
-    for (const [roleId, { roleName, users }] of sortedRoles) {
+    for (const [, { roleName, users }] of sortedRoles) {
         const userList = users.map(user => `<@${user.id}>`).join(', ');
         const count = users.length;
         totalSupporters += count;
