@@ -1,7 +1,7 @@
 services:
   bot:
-    image: mri/mri-qbot
-    container_name: mri-qbot
+    image: mri/ghcr.io/mri-qbox-brasil/mri-qbot
+    container_name: ghcr.io/mri-qbox-brasil/mri-qbot
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - CLIENT_ID=${CLIENT_ID}
