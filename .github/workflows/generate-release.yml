@@ -34,6 +34,7 @@ jobs:
         env:
           lowercase_repo: ${{ env.lowercase_repo }}
         run: |
+          LOWERCASE_REPO="ghcr.io/${{ env.lowercase_repo }}"
           # Atualiza a versão no package.json
           npm version ${{ github.ref_name }} --no-git-tag-version || echo "Versão já está configurada."
 
@@ -45,8 +46,8 @@ jobs:
           sed -e "s/{{repository}}/${{ github.repository }}/g" \
             README.template.md > README.md
 
-          sed -e "s|{{lowercase_repo}}|ghcr.io/${{ env.lowercase_repo }}|g" \
-            -e "s|{{repository}}|${{ github.event.repository.name }}|g" \
+          sed -e "s/{{lowercase_repo}}/${ LOWERCASE_REPO }/g" \
+            -e "s/{{repository}}/${{ github.event.repository.name }}/g" \
             docker-compose.yml.template > docker-compose.yml
 
           # Configura o Git para o commit
