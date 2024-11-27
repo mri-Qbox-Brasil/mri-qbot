@@ -1,7 +1,7 @@
 services:
   bot:
-    image: mri/{{repo}}
-    container_name: {{repo}}
+    image: {{lowercase_repo}}
+    container_name: {{repository}}
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - CLIENT_ID=${CLIENT_ID}

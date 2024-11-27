@@ -42,11 +42,11 @@ jobs:
           rm -f docker-compose.yml
 
           # Substitui variáveis no README e no docker-compose.yml
-          sed -e "s/{{user}}/${{ github.actor }}/g" \
-              -e "s/{{repo}}/${{ github.event.repository.name }}/g" \
+          sed -e "s/{{user}}/${{ github.repository }}/g" \
               README.template.md > README.md
 
           sed -e "s|{{repo}}|ghcr.io/${{ env.lowercase_repo }}|g" \
+              -e "s/{{repo_only}}/${{ github.event.repository.name }}/g" \
               docker-compose.yml.template > docker-compose.yml
 
           # Configura o Git para o commit
