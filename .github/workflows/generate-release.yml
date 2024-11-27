@@ -41,6 +41,12 @@ jobs:
           git commit -m "Feat: Atualizado README.md e docker-compose.yml"
           git push origin HEAD:main
 
+      - name: Set lowercase repository name
+        id: repo_name
+        run: |
+          LOWERCASE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "lowercase_repo=$LOWERCASE_REPO" >> $GITHUB_ENV
+
       - name: Install dependencies
         working-directory: ./src
         run: npm install
@@ -73,7 +79,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/mri/${{ github.event.repository.name }}
+          images: ghcr.io/${{ env.lowercase_repo }}
 
       - name: Build and push
         id: build
@@ -83,8 +89,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/mri/${{ github.event.repository.name }}:latest
-            ghcr.io/mri/${{ github.event.repository.name }}:${{ github.ref_name }}
+            ghcr.io/${{ env.lowercase_repo }}:latest
+            ghcr.io/${{ env.lowercase_repo }}:${{ github.ref_name }}
 
       - name: Get commit messages, version, and repository description
         id: get_project_information
