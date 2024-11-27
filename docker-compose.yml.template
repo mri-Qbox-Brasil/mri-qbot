@@ -1,7 +1,7 @@
 services:
   bot:
     image: {{user}}/{{repo}}
-    container_name: discord_bot
+    container_name: {{repo}}
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - CLIENT_ID=${CLIENT_ID}
