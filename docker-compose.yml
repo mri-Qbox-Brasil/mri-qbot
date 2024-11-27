@@ -1,6 +1,6 @@
 services:
   bot:
-    image: ggfto/mri-qbot
+    image: mri/mri-qbot
     container_name: mri-qbot
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
