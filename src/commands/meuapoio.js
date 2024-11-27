@@ -4,7 +4,7 @@ const Supporters = require('../model/supporterModel');
 const hasPermission = require('../utils/permissionUtils');
 const moment = require('moment');
 
-async function createSupportEmbed(description, color, fields = []) {
+async function createSupportEmbed({description, color, fields}) {
     return await createEmbed({
         title: 'Status do Apoio',
         description,
@@ -24,10 +24,10 @@ module.exports = {
         try {
             // Verifica permissões
             if (!await hasPermission(interaction, 'meuapoio')) {
-                const embed = await createSupportEmbed(
-                    'Você não tem permissão para usar este comando.',
-                    EmbedColors.DANGER
-                );
+                const embed = await createSupportEmbed({
+                    description: 'Você não tem permissão para usar este comando.',
+                    color: EmbedColors.DANGER
+                });
                 return interaction.editReply({ embeds: [embed] });
             }
 
@@ -41,10 +41,10 @@ module.exports = {
 
             // Caso não tenha apoio registrado
             if (!supporterData) {
-                const embed = await createSupportEmbed(
-                    'Você não possui um apoio registrado no momento.',
-                    EmbedColors.INFO
-                );
+                const embed = await createSupportEmbed({
+                    description: 'Você não possui um apoio registrado no momento.',
+                    color: EmbedColors.INFO
+                });
                 return interaction.editReply({ embeds: [embed] });
             }
 
@@ -75,21 +75,21 @@ module.exports = {
             }
 
             // Criação do embed de resposta
-            const embed = await createSupportEmbed(
-                `Detalhes do seu apoio no servidor **${guildName}**:`,
-                EmbedColors.INFO,
+            const embed = await createSupportEmbed({
+                description: `Detalhes do seu apoio no servidor **${guildName}**:`,
+                color: EmbedColors.INFO,
                 fields
-            );
+            });
 
             // Responde com o embed
             await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
             console.error('Erro ao executar o comando /meuapoio:', error);
-            const embed = await createSupportEmbed(
-                'Ocorreu um erro ao buscar suas informações de apoio. Tente novamente mais tarde.',
-                EmbedColors.DANGER
-            );
+            const embed = await createSupportEmbed({
+                description: 'Ocorreu um erro ao buscar suas informações de apoio. Tente novamente mais tarde.',
+                color: EmbedColors.DANGER
+            });
             return interaction.editReply({ embeds: [embed] });
         }
     },

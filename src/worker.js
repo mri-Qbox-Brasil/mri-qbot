@@ -2,23 +2,24 @@ const { Op } = require('sequelize');
 const cron = require('node-cron');
 const moment = require('moment');
 const sequelize = require('./database/sequelize');
+const { SupportActionType } = require('./utils/constants');
 const Supporters = require('./model/supporterModel');
 const SupporterLogs = require('./model/supporterLogsModel');
+const { EmbedColors } = require('./utils/embedUtils');
 
-async function expirySupport(userId, expirationDate, transaction) {
+async function expirySupport(supporter, transaction) {
     const [affectedRows] = await Supporters.update(
         { active: false },
         {
             where: {
-                userId,
-                expirationDate: { [Op.lte]: expirationDate },
+                id: supporter.id
             },
             transaction,
         }
     );
 
     if (affectedRows === 0) {
-        console.log(`Nenhum registro atualizado para userId: ${userId}`);
+        console.log(`Nenhum registro atualizado para id: ${supporter.id}`);
     }
     return affectedRows;
 }
@@ -29,7 +30,7 @@ async function logRoleExpiration(supporter, transaction) {
         userId: supporter.userId,
         guildId: supporter.guildId,
         roleId: supporter.roleId,
-        actionType: 'expired',
+        actionType: SupportActionType.EXPIRED,
         performedBy: 'system',
         actionDate: new Date(),
     }, { transaction });
@@ -37,7 +38,7 @@ async function logRoleExpiration(supporter, transaction) {
 
 async function sendSupportMessage(supportUser, roleName, username) {
     try {
-        await supportUser.send(`O cargo ${roleName} de ${username} expirou.`);
+        await supportUser.send(`O apoio ${roleName} de ${username} chegou ao fim.`);
     } catch (error) {
         console.error(`Erro ao enviar DM para ${supportUser?.user?.username || 'desconhecido'}: ${error.message}`);
     }
@@ -48,7 +49,6 @@ async function checkExpiredRoles(client) {
     const expiredSupporters = await Supporters.findAll({
         where: {
             expirationDate: { [Op.lte]: now },
-            roleId: { [Op.ne]: null },
             active: true
         },
     });
@@ -64,20 +64,39 @@ async function checkExpiredRoles(client) {
             const supportUser = supporter.supportUserId ? await guild.members.fetch(supporter.supportUserId).catch(() => null) : null;
 
             if (member && role) {
-                await member.roles.remove(role).catch(err =>
-                    console.error(`Erro ao remover cargo ${role.name} de ${member.user.username}: ${err.message}`)
-                );
+                await member.roles.remove(role).catch(err => {
+                    console.error(`Erro ao remover apoio ${role.name} de ${member.user.username}: ${err.message}`);
+                    client.users.fetch(guild.ownerId).then((owner) => {
+                        const embed = new EmbedBuilder()
+                            .setTitle('Erro ao expirar apoio')
+                            .setColor(EmbedColors.DANGER)
+                            .addFields(
+                                { name: 'Membro', value: member.user.username },
+                                { name: 'ID do Membro', value: member.id },
+                                { name: 'Cargo', value: role.name },
+                                { name: 'ID do Cargo', value: role.id },
+                                { name: 'Servidor', value: guild.name },
+                                { name: 'ID do Servidor', value: guild.id },
+                                { name: 'Erro', value: err.message }
+                            )
+                            .setTimestamp();
+
+                        owner.send({ embeds: [embed] })
+                            .then(() => console.log('Embed enviado com sucesso!'))
+                            .catch((error) => console.error('Erro ao enviar mensagem:', error));
+                    }).catch(console.error);
+                });
 
                 if (supportUser) {
                     await sendSupportMessage(supportUser, role.name, member.user.username);
                 }
 
-                await expirySupport(supporter.userId, supporter.expirationDate, transaction);
+                await expirySupport(supporter, transaction);
                 await logRoleExpiration(supporter, transaction);
             }
             await transaction.commit();
         } catch (error) {
-            console.error(`Erro ao processar supporter ${supporter.userId}:`, error);
+            console.error(`Erro ao processar supporter ${supporter.id}:`, error);
             await transaction.rollback();
         }
     }

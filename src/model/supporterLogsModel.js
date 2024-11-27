@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../database/sequelize');
+const { SupportActionType } = require('../utils/constants');
 
 const SupporterLogs = sequelize.define('supporterLogs', {
     id: {
@@ -25,7 +26,7 @@ const SupporterLogs = sequelize.define('supporterLogs', {
         allowNull: true,
     },
     actionType: {
-        type: DataTypes.ENUM('added', 'removed', 'expired', 'updated'),
+        type: DataTypes.ENUM(...Object.values(SupportActionType)),
         allowNull: false,
     },
     performedBy: {

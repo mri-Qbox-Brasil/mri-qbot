@@ -1,24 +1,25 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('@discordjs/builders');
-const { EmbedColors, createEmbed } = require('../utils/embedUtils');
+const { SlashCommandBuilder } = require('@discordjs/builders');
 const sequelize = require('../database/sequelize');
+const { EmbedColors, createEmbed } = require('../utils/embedUtils');
+const { SupportActionType } = require('../utils/constants');
 const Supporters = require('../model/supporterModel');
 const SupporterLogs = require('../model/supporterLogsModel');
 const hasPermission = require('../utils/permissionUtils');
 const moment = require('moment');
 
-async function createLog(supportId, userId, guildId, roleId, actionType, performedBy, transaction) {
+async function createLog({supporterData, actionType, performedBy, transaction}) {
     await SupporterLogs.create({
-        supportId,
-        userId,
-        guildId,
-        roleId,
+        supportId: supporterData.id,
+        userId: supporterData.userId,
+        guildId: supporterData.guildId,
+        roleId: supporterData.roleId,
         actionType,
         performedBy,
         actionDate: new Date(),
     }, { transaction });
 }
 
-async function createSupporterEmbed(description, color, fields = []) {
+async function createSupporterEmbed({description, color, fields}) {
     return await createEmbed({
         title: 'Status do Apoio',
         description,
@@ -38,18 +39,21 @@ function parseExpiryDate(input) {
 }
 
 async function getSupporterData(userId) {
-    return await Supporters.findOne({ where: { userId } });
+    return await Supporters.findOne({ where: { userId, active: true } });
 }
 
-async function updateSupporterData(userId, roleId, expirationDate, supportUserId, guildId, active, transaction) {
+async function updateSupporterData({supporterData, role, expiryDate, supportUser, transaction}) {
     return await Supporters.update({
-        userId,
-        roleId,
-        expirationDate,
-        supportUserId,
-        guildId,
-        active
-    }, { transaction });
+        roleId: role ? role.id : supporterData.roleId,
+        expirationDate: expiryDate || supporterData.expirationDate,
+        supportUserId: supportUser ? supportUser.id : supporterData.supportUserId,
+        guildId: supporterData.guildId,
+        active: supporterData.active
+    }, {
+        where: {
+            id: supporterData.id
+        }
+    }, transaction );
 }
 
 async function insertSupporterData(userId, roleId, expirationDate, supportUserId, guildId, active, transaction) {
@@ -128,7 +132,7 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         if (!await hasPermission(interaction, 'apoiador')) {
-            const embed = await createSupporterEmbed('Você não tem permissão para usar este comando.', EmbedColors.DANGER);
+            const embed = await createSupporterEmbed({description: 'Você não tem permissão para usar este comando.', color: EmbedColors.DANGER});
             return interaction.editReply({
                 embeds: [embed]
             });
@@ -148,7 +152,7 @@ module.exports = {
             await handlers[subcommand]();
         } catch (error) {
             console.error(error);
-            const embed = await createSupporterEmbed('Ocorreu um erro ao executar este comando.', EmbedColors.DANGER);
+            const embed = await createSupporterEmbed({description: 'Ocorreu um erro ao executar este comando.', color: EmbedColors.DANGER});
             return interaction.editReply({
                 embeds: [embed]
             });
@@ -161,7 +165,7 @@ async function handleVer(interaction) {
     const supporterData = await getSupporterData(user.id);
 
     if (!supporterData) {
-        const embed = await createSupporterEmbed('Este usuário não possui apoio.', EmbedColors.INFO);
+        const embed = await createSupporterEmbed({description: 'Este usuário não possui apoio.', color: EmbedColors.DANGER});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -191,7 +195,7 @@ async function handleVer(interaction) {
     fields.push({ name: 'Data de Validade', value: expirationDate, inline: true });
     fields.push({ name: 'Suporte Atual', value: supportUserString, inline: true });
 
-    const embed = await createSupporterEmbed('Informações do Apoio', EmbedColors.INFO, fields);
+    const embed = await createSupporterEmbed({description: 'Informações do Apoio', color: EmbedColors.INFO, fields});
 
     return interaction.editReply({
         embeds: [embed]
@@ -206,7 +210,7 @@ async function handleAdd(interaction) {
 
     let expiryDate = parseExpiryDate(expiryInput);
     if (!expiryDate) {
-        const embed = await createSupporterEmbed('Formato de data inválido. Utilize DD/MM/YYYY ou dias.', EmbedColors.DANGER);
+        const embed = await createSupporterEmbed({description: 'Formato de data inválido. Utilize DD/MM/YYYY ou dias.', color: EmbedColors.DANGER});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -214,7 +218,15 @@ async function handleAdd(interaction) {
 
     const guildMember = await interaction.guild.members.fetch(user.id).catch(() => null);
     if (!guildMember) {
-        const embed = await createSupporterEmbed('O usuário especificado não é membro deste servidor.', EmbedColors.DANGER);
+        const embed = await createSupporterEmbed({description: 'O usuário especificado não é membro deste servidor.', color: EmbedColors.DANGER});
+        return interaction.editReply({
+            embeds: [embed]
+        });
+    }
+
+    const supporterData = await getSupporterData(user.id);
+    if (supporterData) {
+        const embed = await createSupporterEmbed({description: 'Este usuário ja possui um apoio.', color: EmbedColors.DANGER});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -222,22 +234,22 @@ async function handleAdd(interaction) {
 
     const transaction = await sequelize.transaction();
     try {
-        const supporterRecord = await insertSupporterData(user.id, role ? role.id : null, expiryDate, supportUser ? supportUser.id : null, interaction.guild.id, true, transaction);
+        const supporterData = await insertSupporterData(user.id, role ? role.id : null, expiryDate, supportUser ? supportUser.id : null, interaction.guild.id, true, transaction);
 
         if (role) {
             await guildMember.roles.add(role.id);
         }
 
-        await createLog(supporterRecord.id, interaction.user.id, interaction.guild.id, role?.id, 'added', interaction.user.id, transaction);
+        await createLog({supporterData, actionType: SupportActionType.ADDED, performedBy: interaction.user.id, transaction});
         await transaction.commit();
-        const embed = await createSupporterEmbed('Apoio adicionado com sucesso.', EmbedColors.SUCCESS);
+        const embed = await createSupporterEmbed({description: 'Apoio adicionado com sucesso.', color: EmbedColors.SUCCESS});
         return interaction.editReply({
             embeds: [embed]
         });
     } catch (error) {
         await transaction.rollback();
         console.error('Erro ao adicionar apoio:', error);
-        const embed = await createSupporterEmbed('Ocorreu um erro ao processar o comando.', EmbedColors.DANGER);
+        const embed = await createSupporterEmbed({description: 'Ocorreu um erro ao processar o comando.', color: EmbedColors.DANGER, fields: [{ name: 'Detalhes', value: error.message }]});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -251,7 +263,7 @@ async function handleEdit(interaction) {
     const supportUser = interaction.options.getUser('responsavel') || null;
 
     if (!role && !expiryInput && !supportUser) {
-        const embed = await createSupporterEmbed('Nenhuma informação foi fornecida.', EmbedColors.WARNING);
+        const embed = await createSupporterEmbed({description: 'Nenhuma informação foi fornecida.', color: EmbedColors.WARNING});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -259,7 +271,7 @@ async function handleEdit(interaction) {
 
     const guildMember = await interaction.guild.members.fetch(user.id).catch(() => null);
     if (!guildMember) {
-        const embed = await createSupporterEmbed('O usuário especificado não é membro deste servidor.', EmbedColors.DANGER);
+        const embed = await createSupporterEmbed({description: 'O usuário especificado não é membro deste servidor.', color: EmbedColors.DANGER});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -267,7 +279,7 @@ async function handleEdit(interaction) {
 
     const supporterData = await getSupporterData(user.id);
     if (!supporterData) {
-        const embed = await createSupporterEmbed('Este usuário não possui apoio.', EmbedColors.INFO);
+        const embed = await createSupporterEmbed({description: 'Este usuário não possui apoio ativo.', color: EmbedColors.DANGER});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -275,7 +287,7 @@ async function handleEdit(interaction) {
 
     let expiryDate = parseExpiryDate(expiryInput);
     if (expiryInput && !expiryDate) {
-        const embed = await createSupporterEmbed('Formato de data inválido. Utilize DD/MM/YYYY ou dias.', EmbedColors.DANGER);
+        const embed = await createSupporterEmbed({description: 'Formato de data inválido. Utilize DD/MM/YYYY ou dias.', color: EmbedColors.DANGER});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -283,26 +295,24 @@ async function handleEdit(interaction) {
 
     const transaction = await sequelize.transaction();
     try {
-        if (supporterData.roleId) {
+        if (role && role.id !== supporterData.roleId) {
             await guildMember.roles.remove(supporterData.roleId);
-        }
-
-        if (role) {
             await guildMember.roles.add(role.id);
         }
 
-        await updateSupporterData(user.id, role ? role.id : supporterData.roleId, expiryDate || supporterData.expirationDate, supportUser ? supportUser.id : supporterData.supportUserId, interaction.guild.id, supporterData.active, transaction);
-
-        await createLog(supporterData.id, interaction.user.id, interaction.guild.id, role?.id, 'edited', interaction.user.id, transaction);
+        await updateSupporterData({supporterData, role: role ? role.id : null, expiryDate, supportUser: supportUser ? supportUser.id : null, transaction});
+        await createLog({supporterData, actionType: SupportActionType.UPDATED, performedBy: interaction.user.id, transaction});
         await transaction.commit();
-        const embed = await createSupporterEmbed('Apoio editado com sucesso.', EmbedColors.SUCCESS);
+
+        const embed = await createSupporterEmbed({description: 'Apoio atualizado com sucesso.', color: EmbedColors.SUCCESS});
         return interaction.editReply({
             embeds: [embed]
         });
     } catch (error) {
         await transaction.rollback();
         console.error('Erro ao editar apoio:', error);
-        const embed = await createSupporterEmbed('Ocorreu um erro ao processar o comando.', EmbedColors.DANGER);
+
+        const embed = await createSupporterEmbed({description: 'Ocorreu um erro ao processar o comando.', color: EmbedColors.DANGER, fileds :[{ name: 'Detalhes', value: error.message }]});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -314,7 +324,7 @@ async function handleRemove(interaction) {
     const supporterData = await getSupporterData(user.id);
 
     if (!supporterData) {
-        const embed = await createSupporterEmbed('Este usuário não possui apoio.', EmbedColors.INFO);
+        const embed = await createSupporterEmbed({description: 'Este usuário não possui apoio.', color: EmbedColors.DANGER});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -327,17 +337,20 @@ async function handleRemove(interaction) {
 
     const transaction = await sequelize.transaction();
     try {
-        await updateSupporterData(user.id, supporterData.roleId, supporterData.expirationDate, supporterData.supportUserId, interaction.guild.id, false, transaction);
-        await createLog(supporterData.id, interaction.user.id, interaction.guild.id, supporterData.roleId, 'removed', interaction.user.id, transaction);
+        supporterData.active = false;
+        await updateSupporterData({supporterData, transaction});
+        await createLog({supporterData, actionType: SupportActionType.REMOVED, performedBy: interaction.user.id, transaction});
         await transaction.commit();
-        const embed = await createSupporterEmbed('Apoio removido com sucesso.', EmbedColors.SUCCESS);
+
+        const embed = await createSupporterEmbed({description: 'Apoio removido com sucesso.', color: EmbedColors.SUCCESS});
         return interaction.editReply({
             embeds: [embed]
         });
     } catch (error) {
         await transaction.rollback();
         console.error('Erro ao remover apoio:', error);
-        const embed = await createSupporterEmbed('Ocorreu um erro ao processar o comando.', EmbedColors.DANGER);
+
+        const embed = await createSupporterEmbed({description: 'Ocorreu um erro ao processar o comando.', color: EmbedColors.DANGER, fileds :[{ name: 'Detalhes', value: error.message }]});
         return interaction.editReply({
             embeds: [embed]
         });
@@ -350,7 +363,7 @@ async function handleList(interaction) {
 
     // Caso não existam apoiadores
     if (supporters.length === 0) {
-        const embed = await createSupporterEmbed('Não há apoiadores no servidor.', EmbedColors.INFO);
+        const embed = await createSupporterEmbed({description: 'Não há apoiadores no servidor.', color: EmbedColors.INFO});
         return interaction.editReply({ embeds: [embed] });
     }
 
@@ -358,18 +371,17 @@ async function handleList(interaction) {
     const groupedSupporters = {};
     for (const supporter of supporters) {
         const role = await interaction.guild.roles.fetch(supporter.roleId).catch(() => null);
-        if (!role) continue;
 
-        if (!groupedSupporters[role.id]) {
-            groupedSupporters[role.id] = {
-                roleName: role.name,
+        if (!groupedSupporters[supporter.roleId]) {
+            groupedSupporters[supporter.roleId] = {
+                roleName: role ? role.name : 'Cargo desconhecido', // Se o cargo for nulo, usa o nome "Cargo desconhecido" no embed
                 users: [],
             };
         }
 
         const user = await interaction.client.users.fetch(supporter.userId).catch(() => null);
         if (user) {
-            groupedSupporters[role.id].users.push(user);
+            groupedSupporters[supporter.roleId].users.push(user);
         }
     }
 
@@ -402,6 +414,6 @@ async function handleList(interaction) {
     });
 
     // Criação do embed de resposta
-    const embed = await createSupporterEmbed('Apoiadores agrupados por cargo:', EmbedColors.SUCCESS, fields);
+    const embed = await createSupporterEmbed({description: 'Apoiadores agrupados por cargo:', color: EmbedColors.SUCCESS, fields});
     return interaction.editReply({ embeds: [embed] });
 }

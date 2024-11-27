@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../utils/embedUtils');
 const hasPermission = require('../utils/permissionUtils');
 
-async function createSayEmbed(description, color, fields = []) {
+async function createSayEmbed({description, color, fields}) {
     return createEmbed({
         title: 'Comando de Mensagens',
         description,
@@ -33,7 +33,7 @@ module.exports = {
 
         // Verificação de permissão
         if (!await hasPermission(interaction, 'say')) {
-            const embed = await createSayEmbed('Você não tem permissão para usar este comando.', EmbedColors.DANGER);
+            const embed = await createSayEmbed({description: 'Você não tem permissão para usar este comando.', color: EmbedColors.DANGER});
             return interaction.editReply({ embeds: [embed] });
         }
 
@@ -43,26 +43,20 @@ module.exports = {
         try {
             // Verifica se o canal selecionado é válido para mensagens de texto
             if (!canalDestino.isTextBased()) {
-                const embed = await createSayEmbed('Por favor, selecione um canal de texto válido.', EmbedColors.WARNING);
+                const embed = await createSayEmbed({description: 'Por favor, selecione um canal de texto válido.', color: EmbedColors.WARNING});
                 return interaction.editReply({ embeds: [embed] });
             }
 
             // Envia a mensagem para o canal especificado
             await canalDestino.send(mensagem);
 
-            const embed = await createSayEmbed(`Mensagem enviada com sucesso para ${canalDestino}.`, EmbedColors.SUCCESS);
+            const embed = await createSayEmbed({description: `Mensagem enviada com sucesso para ${canalDestino}.`, color: EmbedColors.SUCCESS});
             return interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
             console.error('Erro ao enviar a mensagem:', error);
 
-            const fields = [
-                {
-                    name: 'Mensagem de erro',
-                    value: error.message || 'Não foi possível identificar o erro.',
-                },
-            ];
-            const embed = await createSayEmbed('Ocorreu um erro ao enviar a mensagem.', EmbedColors.DANGER, fields);
+            const embed = await createSayEmbed({description: 'Ocorreu um erro ao enviar a mensagem.', color: EmbedColors.DANGER, fields: [{name: 'Mensagem de erro', value: error.message || 'Não foi possível identificar o erro.'}]});
             return interaction.editReply({ embeds: [embed] });
         }
     },
