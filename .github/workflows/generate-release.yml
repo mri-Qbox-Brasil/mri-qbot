@@ -46,7 +46,7 @@ jobs:
           sed -e "s|{{repository}}|${{ github.repository }}|g" \
             README.template.md > README.md
 
-          sed -e "s|{{lowercase_repo}}|${ LOWERCASE_REPO }|g" \
+          sed -e "s|{{lowercase_repo}}|${LOWERCASE_REPO}|g" \
             -e "s|{{repository}}|${{ github.event.repository.name }}|g" \
             docker-compose.yml.template > docker-compose.yml
 
