@@ -73,7 +73,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ github.repository }}
 
       - name: Build and push
         id: build
@@ -83,8 +83,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ${{ github.repository }}:latest
+            ${{ github.repository }}:${{ github.ref_name }}
 
       - name: Get commit messages, version, and repository description
         id: get_project_information
