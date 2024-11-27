@@ -1,6 +1,6 @@
 services:
   bot:
-    image: {{user}}/{{repo}}
+    image: mri/{{repo}}
     container_name: {{repo}}
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
