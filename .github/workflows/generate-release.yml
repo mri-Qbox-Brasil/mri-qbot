@@ -46,7 +46,7 @@ jobs:
             README.template.md > README.md
 
           sed -e "s|{{lowercase_repo}}|ghcr.io/${{ env.lowercase_repo }}|g" \
-            -e "s/{{repository}}/${{ github.event.repository.name }}/g" \
+            -e "s|{{repository}}|${{ github.event.repository.name }}|g" \
             docker-compose.yml.template > docker-compose.yml
 
           # Configura o Git para o commit
