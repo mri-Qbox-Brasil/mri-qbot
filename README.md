@@ -1,11 +1,11 @@
 # Discord Bot Template
 
-![Build Status](https://github.com/ggfto/devbot/actions/workflows/generate-release.yml/badge.svg)
-![GitHub package.json version](https://img.shields.io/github/package-json/v/ggfto/devbot?color=blue)
-![Issues](https://img.shields.io/github/issues/ggfto/devbot.svg)
-![Pull Requests](https://img.shields.io/github/issues-pr/ggfto/devbot.svg)
-![Last Commit](https://img.shields.io/github/last-commit/ggfto/devbot.svg?color=blue)
-![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/ggfto/devbot)
+![Build Status](https://github.com/ggfto/mri-qbot/actions/workflows/generate-release.yml/badge.svg)
+![GitHub package.json version](https://img.shields.io/github/package-json/v/ggfto/mri-qbot?color=blue)
+![Issues](https://img.shields.io/github/issues/ggfto/mri-qbot.svg)
+![Pull Requests](https://img.shields.io/github/issues-pr/ggfto/mri-qbot.svg)
+![Last Commit](https://img.shields.io/github/last-commit/ggfto/mri-qbot.svg?color=blue)
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/ggfto/mri-qbot)
 [![Creative Commons License](https://licensebuttons.net/l/by/1.0/80x15.png)](https://creativecommons.org/licenses/by/1.0/)
 
 This is a template repo for creating discord bots using NodeJS and Discord.js.
