@@ -24,28 +24,39 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Update package version, generate and push README
-        run: |
-          npm version ${{ github.ref_name }} --no-git-tag-version
-          sed -e "s/{{user}}/${{ github.actor }}/g" \
-            -e "s/{{repo}}/${{ github.event.repository.name }}/g" \
-            README.template.md > README.md
-          sed -e "s/{{user}}/${{ github.actor }}/g" \
-            -e "s/{{repo}}/${{ github.event.repository.name }}/g" \
-            docker-compose.yml.template > docker-compose.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git add docker-compose.yml
-          git add package.json
-          git commit -m "Feat: Atualizado README.md e docker-compose.yml"
-          git push origin HEAD:main
-
       - name: Set lowercase repository name
         id: repo_name
         run: |
           LOWERCASE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "lowercase_repo=$LOWERCASE_REPO" >> $GITHUB_ENV
+
+      - name: Update package version, generate and push README
+        env:
+          lowercase_repo: ${{ env.lowercase_repo }}
+        run: |
+          # Atualiza a versão no package.json
+          npm version ${{ github.ref_name }} --no-git-tag-version || echo "Versão já está configurada."
+
+          # Remove arquivos antigos
+          rm -f README.md
+          rm -f docker-compose.yml
+
+          # Substitui variáveis no README e no docker-compose.yml
+          sed -e "s/{{user}}/${{ github.actor }}/g" \
+              -e "s/{{repo}}/${{ github.event.repository.name }}/g" \
+              README.template.md > README.md
+
+          sed -e "s|{{repo}}|ghcr.io/${{ env.lowercase_repo }}|g" \
+              docker-compose.yml.template > docker-compose.yml
+
+          # Configura o Git para o commit
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Adiciona os arquivos alterados ao commit
+          git add README.md docker-compose.yml package.json
+          git commit -m "Feat: Atualizado README.md e docker-compose.yml" || echo "Nenhuma mudança detectada."
+          git push origin HEAD:main
 
       - name: Install dependencies
         working-directory: ./src
