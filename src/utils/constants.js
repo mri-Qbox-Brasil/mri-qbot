@@ -12,4 +12,11 @@ const SupportActionType = {
     UPDATED: 'updated'
 };
 
-module.exports = { PermActionType, SupportActionType };
+const IdType = {
+    USER: 'user',
+    ROLE: 'role',
+    CHANNEL: 'channel',
+    CATEGORY: 'category'
+};
+
+module.exports = { PermActionType, SupportActionType, IdType };

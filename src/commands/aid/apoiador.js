@@ -1,10 +1,10 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const sequelize = require('../database/sequelize');
-const { EmbedColors, createEmbed } = require('../utils/embedUtils');
-const { SupportActionType } = require('../utils/constants');
-const Supporters = require('../model/supporterModel');
-const SupporterLogs = require('../model/supporterLogsModel');
-const hasPermission = require('../utils/permissionUtils');
+const sequelize = require('../../database/sequelize');
+const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
+const { SupportActionType } = require('../../utils/constants');
+const Supporters = require('../../model/supporterModel');
+const SupporterLogs = require('../../model/supporterLogsModel');
+const hasPermission = require('../../utils/permissionUtils');
 const moment = require('moment');
 
 async function createLog({supporterData, actionType, performedBy, transaction}) {
