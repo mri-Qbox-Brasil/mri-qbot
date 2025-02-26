@@ -1,3 +1,4 @@
+const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const sequelize = require('../../database/sequelize');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
@@ -129,7 +130,7 @@ module.exports = {
                 .setDescription('Listar todos os apoiadores do servidor')),
 
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         if (!await hasPermission(interaction, 'apoiador')) {
             const embed = await createSupporterEmbed({description: 'Você não tem permissão para usar este comando.', color: EmbedColors.DANGER});

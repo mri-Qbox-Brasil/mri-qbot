@@ -112,7 +112,7 @@ module.exports = {
                         .setAutocomplete(true))),
 
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         if (!await hasPermission(interaction, 'perm')) {
             const embed = await createPermissionEmbed({action: PermActionType.ERROR, message: 'Você não tem permissão para usar este comando.'});
