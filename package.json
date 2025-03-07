@@ -16,7 +16,7 @@
         "mri-qbot": "file:",
         "mysql2": "^3.13.0",
         "node-cron": "^3.0.3",
-        "sequelize": "^6.37.5"
+        "sequelize": "^6.37.6"
     },
     "devDependencies": {
         "nodemon": "^3.1.9",
