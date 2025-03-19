@@ -1,4 +1,3 @@
-const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('discord.js');
 const axios = require('axios');
 const cheerio = require('cheerio');
@@ -18,7 +17,7 @@ module.exports = {
         .setName('download')
         .setDescription('Envia links para download dos artefatos da Mri Qbox.'),
     async execute(interaction) {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await interaction.deferReply();
 
         const baseUrl = 'https://artifacts.jgscripts.com';
         let windowsLink = '';
