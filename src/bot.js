@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const { loadCommands, loadEvents } = require('./utils/loaders');
 const { syncCommands } = require('./utils/commandSync');
 const { handleError } = require('./utils/errorHandler');
+const { startRoleCheck } = require('./worker');
 require('dotenv').config();
 
 const { DISCORD_TOKEN, SUPPORTER_CHECK_PERIOD } = process.env;
