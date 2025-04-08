@@ -1,14 +1,46 @@
 const { SlashCommandBuilder } = require('discord.js');
-const axios = require('axios');
-const cheerio = require('cheerio');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
+const { fetchArtifactLinks } = require('../../utils/artifactUtils');
+const { notifyError } = require('../../utils/errorHandler');
 
-async function createMriEmbed({description, color, fields}) {
+const BASE_URL = 'https://artifacts.jgscripts.com';
+
+function buildArtifactButtons({ version, windowsLink, linuxLink }) {
+    const buttons = [];
+
+    if (windowsLink) {
+        buttons.push({
+            type: 2,
+            label: `Windows (${version})`,
+            style: 5,
+            url: windowsLink
+        });
+    }
+
+    if (linuxLink) {
+        buttons.push({
+            type: 2,
+            label: `Linux (${version})`,
+            style: 5,
+            url: linuxLink
+        });
+    }
+
+    buttons.push({
+        type: 2,
+        label: 'Receita',
+        style: 5,
+        url: 'https://docs.mriqbox.com.br/mri/instalacao#execute-o-deploy-da-receita'
+    });
+
+    return buttons;
+}
+
+async function createMriEmbed({ description, color }) {
     return createEmbed({
         title: 'Downloads - Mri Qbox',
         description,
-        color,
-        fields,
+        color
     });
 }
 
@@ -19,67 +51,39 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply();
 
-        const baseUrl = 'https://artifacts.jgscripts.com';
-        let windowsLink = '';
-        let linuxLink = '';
-        let artifactVersion = 'Desconhecida';
-
         try {
-            const response = await axios.get(baseUrl);
-            const $ = cheerio.load(response.data);
+            const { version, windowsLink, linuxLink } = await fetchArtifactLinks(BASE_URL);
 
-            // Captura a versão do artefato
-            $('code').each((_, element) => {
-                const text = $(element).text().trim();
-                if (text.match(/\d+/g) && artifactVersion === 'Desconhecida') {
-                    artifactVersion = text;
-                }
+            const embed = await createMriEmbed({
+                description: `Versão dos artefatos sugerida por [JGScripts](${BASE_URL}): ${version}`,
+                color: EmbedColors.SUCCESS
             });
 
-            // Captura os links
-            $('a').each((_, element) => {
-                const href = $(element).attr('href');
+            const buttons = buildArtifactButtons({ version, windowsLink, linuxLink });
 
-                if (href.includes('windows')) {
-                    windowsLink = `${href}`;
-                }
-                if (href.includes('linux')) {
-                    linuxLink = `${href}`;
-                }
+            await interaction.editReply({
+                embeds: [embed],
+                components: [{ type: 1, components: buttons }]
             });
+
         } catch (error) {
-            console.error('Erro ao buscar os links dos artefatos:', error);
-            const embed = await createMriEmbed({description: 'Ocorreu um erro ao executar o comando.', color: EmbedColors.DANGER, fields: [{name: 'Mensagem de erro', value: error.message || 'Não foi possível identificar o erro.'}]});
-            return interaction.editReply({ embeds: [embed] });
-        }
+            console.error(`Erro no comando /${this.data.name}:`, error);
 
-        const embed = await createMriEmbed({description: `Versão dos artefatos sugerida por [JGScripts](${baseUrl}): ${artifactVersion}`, color: EmbedColors.SUCCESS});
-
-        const components = [];
-        if (windowsLink) {
-            components.push({
-                type: 2,
-                label: `Windows (${artifactVersion})`,
-                style: 5,
-                url: windowsLink
+            notifyError({
+                client: interaction.client,
+                user: interaction.user,
+                channel: interaction.channel,
+                guild: interaction.guild,
+                context: `/${this.data.name}`,
+                error
             });
-        }
-        if (linuxLink) {
-            components.push({
-                type: 2,
-                label: `Linux (${artifactVersion})`,
-                style: 5,
-                url: linuxLink
-            });
-        }
-        components.push({
-            type: 2,
-            label: 'Receita',
-            style: 5,
-            url: "https://docs.mriqbox.com.br/mri/instalacao#execute-o-deploy-da-receita"
-        });
 
-        console.log('Enviando resposta para o usuário');
-        await interaction.editReply({ embeds: [embed], components: [{ type: 1, components }] });
+            const embed = await createMriEmbed({
+                description: 'Ocorreu um erro ao executar o comando.',
+                color: EmbedColors.DANGER
+            });
+
+            await interaction.editReply({ embeds: [embed] });
+        }
     }
 };

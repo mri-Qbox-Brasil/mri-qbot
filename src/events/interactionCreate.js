@@ -1,4 +1,5 @@
 const { EmbedColors, createEmbed } = require('../utils/embedUtils');
+const { notifyError } = require('../utils/errorHandler');
 
 async function createEmbedInteraction({description, color, fields}) {
     return await createEmbed({
@@ -28,13 +29,14 @@ module.exports = {
                 return;
             }
         } catch (error) {
-            console.error(`Erro ao executar o comando ${interaction.commandName}:`, error);
-            const embed = await createEmbedInteraction({description: 'Ocorreu um erro ao executar o comando.', color: EmbedColors.DANGER, fields: [{ name: 'Erro', value: error.message }] });
-            try {
-                await interaction.reply({ embeds: [embed], ephemeral: true });
-            } catch (error) {
-                await interaction.editReply({ embeds: [embed], ephemeral: true });
-            }
+            notifyError({
+                client: interaction.client,
+                user: interaction.user,
+                channel: interaction.channel,
+                guild: interaction.guild,
+                context: 'interactionCreate',
+                error: new Error(`Erro ao processar interação: ${error.message}`)
+            });
         }
     },
 };

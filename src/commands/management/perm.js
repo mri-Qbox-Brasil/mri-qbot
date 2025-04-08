@@ -4,6 +4,7 @@ const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
 const { PermActionType } = require('../../utils/constants');
 const CommandRoles = require('../../model/commandRoleModel');
 const hasPermission = require('../../utils/permissionUtils');
+const { notifyError } = require('../../utils/errorHandler');
 
 async function getPermissionsDescription(commandName) {
     const roles = await CommandRoles.findAll({ where: { commandName } });
@@ -134,9 +135,23 @@ module.exports = {
             const embed = await handlers[subcommand]();
             return interaction.editReply({ embeds: [embed] });
         } catch (error) {
-            console.error(`Erro ao processar o subcomando /perm ${subcommand}:`, error);
-            const embed = await createPermissionEmbed({action: PermActionType.ERROR, commandName, message: error.message});
-            return interaction.editReply({ embeds: [embed] });
+            console.error(`Erro no comando /${this.data.name}:`, error);
+
+            notifyError({
+                client: interaction.client,
+                user: interaction.user,
+                channel: interaction.channel,
+                guild: interaction.guild,
+                context: `/${this.data.name}`,
+                error
+            });
+
+            const embed = await createMriEmbed({
+                description: 'Ocorreu um erro ao executar o comando.',
+                color: EmbedColors.DANGER
+            });
+
+            await interaction.editReply({ embeds: [embed] });
         }
     },
 

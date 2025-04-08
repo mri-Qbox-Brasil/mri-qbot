@@ -35,11 +35,12 @@ client.commands = new Collection();
         // Inicializar o bot
         client.once('ready', async () => {
             console.log(`Bot iniciado como ${client.user.tag}`);
-            // startRoleCheck(client, SUPPORTER_CHECK_PERIOD); // Começa a checagem de apoio
+            if (!process.env.DEBUG_MODE)
+                startRoleCheck(client, SUPPORTER_CHECK_PERIOD); // Começa a checagem de apoio
         });
 
         client.login(DISCORD_TOKEN);
     } catch (error) {
-        handleError('Erro na inicialização do bot', error);
+        handleError(client, "init", new Error('Erro na inicialização do bot'));
     }
 })();

@@ -6,6 +6,7 @@ const { SupportActionType } = require('../../utils/constants');
 const Supporters = require('../../model/supporterModel');
 const SupporterLogs = require('../../model/supporterLogsModel');
 const hasPermission = require('../../utils/permissionUtils');
+const { notifyError } = require('../../utils/errorHandler');
 const moment = require('moment');
 
 async function createLog({supporterData, actionType, performedBy, transaction}) {
@@ -152,11 +153,23 @@ module.exports = {
         try {
             await handlers[subcommand]();
         } catch (error) {
-            console.error(error);
-            const embed = await createSupporterEmbed({description: 'Ocorreu um erro ao executar este comando.', color: EmbedColors.DANGER});
-            return interaction.editReply({
-                embeds: [embed]
+            console.error(`Erro no comando /${this.data.name}:`, error);
+
+            notifyError({
+                client: interaction.client,
+                user: interaction.user,
+                channel: interaction.channel,
+                guild: interaction.guild,
+                context: `/${this.data.name}`,
+                error
             });
+
+            const embed = await createMriEmbed({
+                description: 'Ocorreu um erro ao executar o comando.',
+                color: EmbedColors.DANGER
+            });
+
+            await interaction.editReply({ embeds: [embed] });
         }
     },
 };

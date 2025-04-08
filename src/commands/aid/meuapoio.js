@@ -3,6 +3,7 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
 const Supporters = require('../../model/supporterModel');
 const hasPermission = require('../../utils/permissionUtils');
+const { notifyError } = require('../../utils/errorHandler');
 const moment = require('moment');
 
 async function createSupportEmbed({description, color, fields}) {
@@ -86,12 +87,23 @@ module.exports = {
             await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
-            console.error('Erro ao executar o comando /meuapoio:', error);
-            const embed = await createSupportEmbed({
-                description: 'Ocorreu um erro ao buscar suas informações de apoio. Tente novamente mais tarde.',
+            console.error(`Erro no comando /${this.data.name}:`, error);
+
+            notifyError({
+                client: interaction.client,
+                user: interaction.user,
+                channel: interaction.channel,
+                guild: interaction.guild,
+                context: `/${this.data.name}`,
+                error
+            });
+
+            const embed = await createMriEmbed({
+                description: 'Ocorreu um erro ao executar o comando.',
                 color: EmbedColors.DANGER
             });
-            return interaction.editReply({ embeds: [embed] });
+
+            await interaction.editReply({ embeds: [embed] });
         }
     },
 };

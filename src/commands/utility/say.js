@@ -2,6 +2,7 @@ const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
 const hasPermission = require('../../utils/permissionUtils');
+const { notifyError } = require('../../utils/errorHandler');
 
 async function createSayEmbed({description, color, fields}) {
     return createEmbed({
@@ -55,10 +56,23 @@ module.exports = {
             return interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
-            console.error('Erro ao enviar a mensagem:', error);
+            console.error(`Erro no comando /${this.data.name}:`, error);
 
-            const embed = await createSayEmbed({description: 'Ocorreu um erro ao enviar a mensagem.', color: EmbedColors.DANGER, fields: [{name: 'Mensagem de erro', value: error.message || 'Não foi possível identificar o erro.'}]});
-            return interaction.editReply({ embeds: [embed] });
+            notifyError({
+                client: interaction.client,
+                user: interaction.user,
+                channel: interaction.channel,
+                guild: interaction.guild,
+                context: `/${this.data.name}`,
+                error
+            });
+
+            const embed = await createMriEmbed({
+                description: 'Ocorreu um erro ao executar o comando.',
+                color: EmbedColors.DANGER
+            });
+
+            await interaction.editReply({ embeds: [embed] });
         }
     },
 };
