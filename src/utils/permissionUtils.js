@@ -1,4 +1,4 @@
-const CommandRoles = require('../model/commandRoleModel');
+const CommandRoles = require('../db/model/commandRoleModel');
 const { PermissionsBitField } = require('discord.js');
 
 async function hasPermission(interaction, commandName = 'apoiador') {

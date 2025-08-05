@@ -9,12 +9,23 @@ async function loadCommands(client, commandsPath = './src/commands') {
         for (const file of files) {
             const filePath = path.resolve(dir, file);
             const stat = fs.statSync(filePath);
+
             if (stat.isDirectory()) {
                 readFiles(filePath);
             } else if (file.endsWith('.js')) {
-                const command = require(filePath);
-                client.commands.set(command.data.name, command);
-                commands.push(command.data.toJSON());
+                try {
+                    const command = require(filePath);
+
+                    if (!command?.data?.name) {
+                        console.warn(`[AVISO] O comando em "${filePath}" não possui um nome definido.`);
+                        continue;
+                    }
+
+                    client.commands.set(command.data.name, command);
+                    commands.push(command.data.toJSON());
+                } catch (err) {
+                    console.error(`[ERRO] Falha ao carregar o comando em "${filePath}":`, err);
+                }
             }
         }
     }
@@ -25,17 +36,31 @@ async function loadCommands(client, commandsPath = './src/commands') {
 
 async function loadEvents(client, eventsPath = './src/events') {
     const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+    let loadedCount = 0;
 
     for (const file of eventFiles) {
-        const event = require(path.resolve(eventsPath, file));
-        if (event.once) {
-            client.once(event.name, (...args) => event.execute(...args, client));
-        } else {
-            client.on(event.name, (...args) => event.execute(...args, client));
+        const filePath = path.resolve(eventsPath, file);
+        try {
+            const event = require(filePath);
+
+            if (!event?.name || typeof event.execute !== 'function') {
+                console.warn(`[AVISO] O evento em "${filePath}" está malformado (sem nome ou função execute).`);
+                continue;
+            }
+
+            if (event.once) {
+                client.once(event.name, (...args) => event.execute(...args, client));
+            } else {
+                client.on(event.name, (...args) => event.execute(...args, client));
+            }
+
+            loadedCount++;
+        } catch (err) {
+            console.error(`[ERRO] Falha ao carregar o evento em "${filePath}":`, err);
         }
     }
 
-    console.log(`Eventos registrados: ${eventFiles.length}`);
+    console.log(`Eventos registrados: ${loadedCount}/${eventFiles.length}`);
 }
 
 module.exports = { loadCommands, loadEvents };

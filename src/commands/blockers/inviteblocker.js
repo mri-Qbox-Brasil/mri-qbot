@@ -2,35 +2,36 @@ const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
 const hasPermission = require('../../utils/permissionUtils');
-const { getConfig, setConfig } = require('../../model/configurationModel');
 
-async function getBlockerConfig(guildId) {
-    return await getConfig(guildId, 'inviteBlockerSettings');
+async function getBlockerConfig(client, guildId) {
+    const Config = client.db.Configuration;
+    return await Config.getConfig(guildId, 'inviteBlockerSettings');
 }
 
-async function setBlockerConfig(guildId, config) {
-    await setConfig(guildId, 'inviteBlockerSettings', config);
+async function setBlockerConfig(client, guildId, config) {
+    const Config = client.db.Configuration;
+    await Config.setConfig(guildId, 'inviteBlockerSettings', config);
 }
 
-async function isInviteBlockerEnabled(guildId) {
-    const config = await getBlockerConfig(guildId);
+async function isInviteBlockerEnabled(client, guildId) {
+    const config = await getBlockerConfig(client, guildId);
     return config ? config.enabled : false;
 }
 
-async function getAllowedChannels(guildId) {
-    const config = await getBlockerConfig(guildId);
+async function getAllowedChannels(client, guildId) {
+    const config = await getBlockerConfig(client, guildId);
     return config ? config.allowedChannels || [] : [];
 }
 
-async function getAllowedMembers(guildId) {
-    const config = await getBlockerConfig(guildId);
+async function getAllowedMembers(client, guildId) {
+    const config = await getBlockerConfig(client, guildId);
     return config ? config.allowedMembers || [] : [];
 }
 
-async function updateInviteBlockerSettings(guildId, updates) {
-    const config = await getBlockerConfig(guildId) || { enabled: false, allowedChannels: [], allowedMembers: [] };
+async function updateInviteBlockerSettings(client, guildId, updates) {
+    const config = await getBlockerConfig(client, guildId) || { enabled: false, allowedChannels: [], allowedMembers: [] };
     const updatedConfig = { ...config, ...updates };
-    await setBlockerConfig(guildId, updatedConfig);
+    await setBlockerConfig(client, guildId, updatedConfig);
 }
 
 const inviteRegex = /(https?:\/\/)(www\.)?(discord\.(gg|com)(\/invite)?\/[^\s]+)/i;
@@ -48,7 +49,7 @@ function createInviteBlockerEmbed(description, color, fields = []) {
 
 // Subcomando: Permitir convites
 async function handleAllow(interaction, channel) {
-    await updateInviteBlockerSettings(interaction.guild.id, { allowedChannels: [...new Set([...await getAllowedChannels(interaction.guild.id), channel.id])] });
+    await updateInviteBlockerSettings(interaction.client, interaction.guild.id, { allowedChannels: [...new Set([...await getAllowedChannels(interaction.client, interaction.guild.id), channel.id])] });
     return createInviteBlockerEmbed(
         `Convites agora são permitidos em **${channel.name}**.`,
         EmbedColors.SUCCESS
@@ -57,7 +58,7 @@ async function handleAllow(interaction, channel) {
 
 // Subcomando: Bloquear convites
 async function handleProhibit(interaction, channel) {
-    await updateInviteBlockerSettings(interaction.guild.id, { allowedChannels: (await getAllowedChannels(interaction.guild.id)).filter(id => id !== channel.id) });
+    await updateInviteBlockerSettings(interaction.client, interaction.guild.id, { allowedChannels: (await getAllowedChannels(interaction.client, interaction.guild.id)).filter(id => id !== channel.id) });
     return createInviteBlockerEmbed(
         `Convites foram bloqueados em **${channel.name}**.`,
         EmbedColors.SUCCESS
@@ -66,12 +67,12 @@ async function handleProhibit(interaction, channel) {
 
 // Subcomando: Listar canais permitidos
 async function handleStatus(interaction) {
-    const isEnabled = await isInviteBlockerEnabled(interaction.guild.id);
+    const isEnabled = await isInviteBlockerEnabled(interaction.client, interaction.guild.id);
     if (!isEnabled) {
         return createInviteBlockerEmbed('O bloqueador de convites está desabilitado.', EmbedColors.INFO);
     }
 
-    const allowedChannels = await getAllowedChannels(interaction.guild.id);
+    const allowedChannels = await getAllowedChannels(interaction.client, interaction.guild.id);
     const fields = allowedChannels.map(channelId => ({
         name: `ID: ${channelId}`,
         value: `<#${channelId}>`,
@@ -87,7 +88,7 @@ async function handleStatus(interaction) {
 // Subcomando: Habilitar/desabilitar bloqueador de convites
 async function handleEnable(interaction) {
     const isEnabled = interaction.options.getBoolean('habilitar');
-    await updateInviteBlockerSettings(interaction.guild.id, { enabled: isEnabled });
+    await updateInviteBlockerSettings(interaction.client, interaction.guild.id, { enabled: isEnabled });
     return createInviteBlockerEmbed(
         isEnabled ? 'Bloqueador de convites habilitado.' : 'Bloqueador de convites desabilitado.',
         EmbedColors.SUCCESS
@@ -181,17 +182,17 @@ module.exports = {
         return regex.test(message.content);
     },
 
-    async validadeBlockerEnabled(guildId) {
-        return await isInviteBlockerEnabled(guildId);
+    async validadeBlockerEnabled(message) {
+        return await isInviteBlockerEnabled(message.client, message.guild.id);
     },
 
     async validateMember(message) {
-        const allowedMembers = new Set(await getAllowedMembers(message.guild.id));
+        const allowedMembers = new Set(await getAllowedMembers(message.client, message.guild.id));
         return allowedMembers.has(message.author.id);
     },
 
     async validateChannelOrCategory(message) {
-        const allowedChannels = new Set(await getAllowedChannels(message.guild.id));
+        const allowedChannels = new Set(await getAllowedChannels(message.client, message.guild.id));
         return this.channelOrCategoryIsAllowed(message, allowedChannels);
     },
 
@@ -205,7 +206,7 @@ module.exports = {
             return;
         }
 
-        if (!await this.validadeBlockerEnabled(message.guild.id)) {
+        if (!await this.validadeBlockerEnabled(message)) {
             return;
         }
 
@@ -220,7 +221,7 @@ module.exports = {
         await message.delete().catch(console.error);
         const futureTimestamp = Math.floor(Date.now() / 1000) + MSG_TIMEOUT;
         const embed = createInviteBlockerEmbed(
-            `Convites de servidores não são permitidos neste canal.\nEsta mensagem será deletada <t:${futureTimestamp}:R>.`,
+            `Convites de servidores não são permitidos neste canal.\nEsta mensagem será removida <t:${futureTimestamp}:R>.`,
             EmbedColors.WARNING
         );
         const warning = await message.channel.send({ embeds: [embed] });

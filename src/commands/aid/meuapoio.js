@@ -1,7 +1,6 @@
 const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
-const Supporters = require('../../model/supporterModel');
 const hasPermission = require('../../utils/permissionUtils');
 const { notifyError } = require('../../utils/errorHandler');
 const moment = require('moment');
@@ -35,6 +34,7 @@ module.exports = {
 
             const user = interaction.user;
             const guildName = interaction.guild.name;
+            const Supporters = interaction.client.db?.Supporters;
 
             // Busca o registro de apoio do usuário
             const supporterData = await Supporters.findOne({

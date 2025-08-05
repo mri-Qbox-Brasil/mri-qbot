@@ -1,11 +1,11 @@
 const { Op } = require('sequelize');
 const cron = require('node-cron');
 const moment = require('moment');
-const sequelize = require('./database/sequelize');
-const { SupportActionType } = require('./utils/constants');
-const Supporters = require('./model/supporterModel');
-const SupporterLogs = require('./model/supporterLogsModel');
-const { EmbedColors } = require('./utils/embedUtils');
+const sequelize = require('../db/db');
+const { SupportActionType } = require('../utils/constants');
+const Supporters = require('../db/model/supporterModel');
+const SupporterLogs = require('../db/model/supporterLogsModel');
+const { EmbedColors } = require('../utils/embedUtils');
 
 async function expirySupport(supporter, transaction) {
     const [affectedRows] = await Supporters.update(
@@ -102,11 +102,11 @@ async function checkExpiredRoles(client) {
     }
 }
 
-function startRoleCheck(client, checkPeriod = '*/1 * * * *') {
+function supporterWorker(client, checkPeriod = '*/1 * * * *') {
     cron.schedule(checkPeriod, () => {
         console.log('Verificando cargos expirados...');
         checkExpiredRoles(client);
     });
 }
 
-module.exports = { startRoleCheck };
+module.exports = { supporterWorker };

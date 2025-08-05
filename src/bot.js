@@ -1,11 +1,13 @@
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const { loadCommands, loadEvents } = require('./utils/loaders');
 const { syncCommands } = require('./utils/commandSync');
-const { handleError } = require('./utils/errorHandler');
-const { startRoleCheck } = require('./worker');
+const { notifyError } = require('./utils/errorHandler');
+const { loadModelsIntoClient } = require('./db');
+const { startRoleCheck } = require('./workers/supporterWorker');
+const { resourceWorker } = require('./workers/resourceWorker');
 require('dotenv').config();
 
-const { DISCORD_TOKEN, SUPPORTER_CHECK_PERIOD } = process.env;
+const { DISCORD_TOKEN, SUPPORTER_CHECK_PERIOD, GITHUB_TOKEN, RESOURCE_CHECK_PERIOD } = process.env;
 
 const client = new Client({
     intents: [
@@ -35,13 +37,16 @@ client.commands = new Collection();
 
         // Inicializar o bot
         client.once('ready', async () => {
-            console.log(`Bot iniciado como ${client.user.tag}`);
+            await loadModelsIntoClient(client);
             if (!process.env.DEBUG_MODE)
-                startRoleCheck(client, SUPPORTER_CHECK_PERIOD); // Começa a checagem de apoio
+                supporterWorker(client, SUPPORTER_CHECK_PERIOD);
+            //resourceWorker(client, GITHUB_TOKEN, RESOURCE_CHECK_PERIOD); // Começa a checagem de apoio
+            console.log(`✅ Bot iniciado como: ${client.user.tag}`);
         });
 
         client.login(DISCORD_TOKEN);
     } catch (error) {
-        handleError(client, "init", new Error('Erro na inicialização do bot'));
+        console.error('Erro ao iniciar o bot:', error);
+        notifyError(error);
     }
 })();

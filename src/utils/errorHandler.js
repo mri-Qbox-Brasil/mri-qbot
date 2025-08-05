@@ -3,6 +3,7 @@ const { EmbedColors } = require('./embedUtils');
 
 async function notifyError({ client, user, channel, guild, context = 'desconhecido', error }) {
     try {
+        console.error('Erro detectado:', error);
         const owner = await client.users.fetch('289124013375094794');
 
         const timestamp = new Date();
