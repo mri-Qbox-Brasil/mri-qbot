@@ -3,8 +3,8 @@ const { loadCommands, loadEvents } = require('./utils/loaders');
 const { syncCommands } = require('./utils/commandSync');
 const { notifyError } = require('./utils/errorHandler');
 const { loadModelsIntoClient } = require('./db');
-const { startRoleCheck } = require('./workers/supporterWorker');
-const { resourceWorker } = require('./workers/resourceWorker');
+const { supporterWorker } = require('./workers/supporterWorker');
+// const { resourceWorker } = require('./workers/resourceWorker');
 require('dotenv').config();
 
 const { DISCORD_TOKEN, SUPPORTER_CHECK_PERIOD, GITHUB_TOKEN, RESOURCE_CHECK_PERIOD } = process.env;
