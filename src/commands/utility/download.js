@@ -55,7 +55,7 @@ module.exports = {
             const { version, windowsLink, linuxLink } = await fetchArtifactLinks(BASE_URL);
 
             const embed = await createMriEmbed({
-                description: `Versão dos artefatos sugerida por [JGScripts](${BASE_URL}): ${version}`,
+                description: `Versão dos artefatos sugerida por [JGScripts](${BASE_URL}): ${version}\n\n⚠️ **Aviso:** A última versão de artefatos sugerida pode ter bugs não reportados ainda`,
                 color: EmbedColors.SUCCESS
             });
 
