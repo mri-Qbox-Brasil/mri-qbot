@@ -159,7 +159,7 @@ jobs:
 
       - name: Post to Discord
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.UPDATE_DISCORD_WEBHOOK }}
           RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_AUTHOR: ${{ github.actor }}
