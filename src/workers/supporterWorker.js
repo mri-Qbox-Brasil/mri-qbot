@@ -1,19 +1,15 @@
 const { Op } = require('sequelize');
 const cron = require('node-cron');
 const moment = require('moment');
-const sequelize = require('../db/db');
 const { SupportActionType } = require('../utils/constants');
-const Supporters = require('../db/model/supporterModel');
-const SupporterLogs = require('../db/model/supporterLogsModel');
 const { EmbedColors } = require('../utils/embedUtils');
+const { EmbedBuilder } = require('discord.js'); // você usa EmbedBuilder mas não tinha importado
 
-async function expirySupport(supporter, transaction) {
+async function expirySupport(supporter, transaction, Supporters) {
     const [affectedRows] = await Supporters.update(
         { active: false },
         {
-            where: {
-                id: supporter.id
-            },
+            where: { id: supporter.id },
             transaction,
         }
     );
@@ -24,7 +20,7 @@ async function expirySupport(supporter, transaction) {
     return affectedRows;
 }
 
-async function logRoleExpiration(supporter, transaction) {
+async function logRoleExpiration(supporter, transaction, SupporterLogs) {
     await SupporterLogs.create({
         supportId: supporter.id,
         userId: supporter.userId,
@@ -45,6 +41,8 @@ async function sendSupportMessage(supportUser, roleName, username) {
 }
 
 async function checkExpiredRoles(client) {
+    const { Supporters, SupporterLogs, sequelize } = client.db;
+
     const now = moment().toDate();
     const expiredSupporters = await Supporters.findAll({
         where: {
@@ -91,8 +89,8 @@ async function checkExpiredRoles(client) {
                     await sendSupportMessage(supportUser, role.name, member.user.username);
                 }
 
-                await expirySupport(supporter, transaction);
-                await logRoleExpiration(supporter, transaction);
+                await expirySupport(supporter, transaction, Supporters);
+                await logRoleExpiration(supporter, transaction, SupporterLogs);
             }
             await transaction.commit();
         } catch (error) {
