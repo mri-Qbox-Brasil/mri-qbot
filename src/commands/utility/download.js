@@ -11,7 +11,7 @@ function buildArtifactButtons({ version, windowsLink, linuxLink }) {
     if (windowsLink) {
         buttons.push({
             type: 2,
-            label: `Windows (${version})`,
+            label: `FxServer Windows (${version})`,
             style: 5,
             url: windowsLink
         });
@@ -20,7 +20,7 @@ function buildArtifactButtons({ version, windowsLink, linuxLink }) {
     if (linuxLink) {
         buttons.push({
             type: 2,
-            label: `Linux (${version})`,
+            label: `FxServer Linux (${version})`,
             style: 5,
             url: linuxLink
         });
@@ -28,7 +28,7 @@ function buildArtifactButtons({ version, windowsLink, linuxLink }) {
 
     buttons.push({
         type: 2,
-        label: 'Receita',
+        label: 'Receita MriQbox',
         style: 5,
         url: 'https://docs.mriqbox.com.br/mri/instalacao#execute-o-deploy-da-receita'
     });
