@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Atualizar o repositório local
+git pull
 git fetch --all --tags
 
 # Função para encontrar a branch principal automaticamente (main ou master)

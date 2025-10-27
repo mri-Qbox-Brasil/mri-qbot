@@ -1,6 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
+git pull
 git fetch --all --tags
 
 :: Detectar branch principal (main ou master)
