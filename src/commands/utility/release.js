@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const hasPermission = require('../../utils/permissionUtils');
 const { notifyError } = require('../../utils/errorHandler');
 
@@ -17,7 +17,7 @@ module.exports = {
 	async execute(interaction) {
 		try {
 			if (interaction.isModalSubmit() && interaction.customId && interaction.customId.startsWith('releaseModal_')) {
-				await interaction.deferReply({ ephemeral: true });
+				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 				const modalSuffix = interaction.customId.split('releaseModal_')[1] || '';
 				// caso customId venha em formatos antigos com "_", pegamos apenas a primeira parte como channelId
@@ -74,7 +74,7 @@ module.exports = {
 
 			if (interaction.isChatInputCommand()) {
 				if (!await hasPermission(interaction, 'release')) {
-					await interaction.reply({ content: 'Você não tem permissão para usar este comando.', ephemeral: true });
+					await interaction.reply({ content: 'Você não tem permissão para usar este comando.', flags: MessageFlags.Ephemeral });
 					return;
 				}
 
@@ -139,7 +139,7 @@ module.exports = {
 				if (interaction.deferred || interaction.replied) {
 					await interaction.editReply({ content: 'Ocorreu um erro ao executar o comando.' });
 				} else {
-					await interaction.reply({ content: 'Ocorreu um erro ao executar o comando.', ephemeral: true });
+					await interaction.reply({ content: 'Ocorreu um erro ao executar o comando.', flags: MessageFlags.Ephemeral });
 				}
 			} catch (_) { /* ignore */ }
 		}
