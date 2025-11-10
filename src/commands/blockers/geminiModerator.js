@@ -1,9 +1,10 @@
 const { checkMessageWithGemini } = require("../../utils/geminiUtils");
 
 const DEFAULT_MESSAGE =
-  "Esta mensagem se trata de uma duvida referente a servidor de fivem QB/QBOX/MRI ou de ajuda em algum script , se sim solicite ajuda no canal {target_channel}, caso considera a mensagem um engano abra um ticket";
-const DEFAULT_PROMPT =
-  "Esta mensagem esta relaciona a algum tipo de ajuda com servidor de fivem QB/QBOX/MRI ou de ajuda em algum script? Analise o conteúdo da mensagem e o nome do canal. Responda APENAS 'sim' ou 'não', sem explicações.";
+    'Esta mensagem se trata de uma duvida referente a servidor de fivem QB/QBOX/MRI ou de ajuda em algum script?' +
+    ' Se sim solicite ajuda em {target_channel}. Caso considere a mensagem um engano abra um ticket';
+const DEFAULT_PROMPT = 'Esta mensagem esta relacionada a algum tipo de ajuda com servidor de fivem QB/QBOX/MRI ou de ajuda em algum script?' +
+    ' Analise o conteúdo da mensagem e o nome do canal. Responda APENAS \'sim\' ou \'não\', sem explicações.';
 const DEFAULT_TIMEOUT = 10;
 
 /**
