@@ -119,7 +119,7 @@ module.exports = {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         if (!await hasPermission(interaction, 'perm')) {
-            const embed = await createPermissionEmbed(client, {action: PermActionType.ERROR, message: 'Você não tem permissão para usar este comando.'});
+            const embed = await createPermissionEmbed(interaction.client, {action: PermActionType.ERROR, message: 'Você não tem permissão para usar este comando.'});
             return interaction.editReply({ embeds: [embed] });
         }
 

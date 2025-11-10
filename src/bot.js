@@ -4,10 +4,11 @@ const { syncCommands } = require('./utils/commandSync');
 const { notifyError } = require('./utils/errorHandler');
 const { loadModelsIntoClient } = require('./db');
 const { supporterWorker } = require('./workers/supporterWorker');
-// const { resourceWorker } = require('./workers/resourceWorker');
+const { announceWorker } = require('./workers/announceWorker');
+const { attachLogger } = require('./utils/logger');
 require('dotenv').config();
 
-const { DISCORD_TOKEN, SUPPORTER_CHECK_PERIOD, GITHUB_TOKEN, RESOURCE_CHECK_PERIOD } = process.env;
+const { DISCORD_TOKEN, SUPPORTER_CHECK_PERIOD, ANNOUNCE_CHECK_PERIOD, ANNOUNCE_TIMEOUT_HOURS } = process.env;
 
 const client = new Client({
     intents: [
@@ -21,32 +22,51 @@ const client = new Client({
 
 client.commands = new Collection();
 
+attachLogger(client);
+
+process.on('unhandledRejection', (reason, promise) => {
+    client.logger.error('Unhandled Rejection detected', { reason: reason?.stack || reason, promise: String(promise) });
+    notifyError(reason);
+});
+
+process.on('uncaughtException', (err) => {
+    client.logger.error('Uncaught Exception', { stack: err?.stack || err });
+    notifyError(err);
+});
+
 (async () => {
     try {
-        // Carregar comandos e eventos
-        console.log('Carregando comandos...');
-        const commands = await loadCommands(client);
-        console.log('Comandos carregados.');
-
-        console.log('Carregando eventos...');
         await loadEvents(client);
-        console.log('Eventos carregados.');
+        await syncCommands(client, await loadCommands(client));
 
-        // Sincronizar comandos
-        await syncCommands(commands);
-
-        // Inicializar o bot
         client.once('ready', async () => {
-            await loadModelsIntoClient(client);
-            if (!process.env.DEBUG_MODE)
-                supporterWorker(client, SUPPORTER_CHECK_PERIOD);
-            //resourceWorker(client, GITHUB_TOKEN, RESOURCE_CHECK_PERIOD); // Começa a checagem de apoio
-            console.log(`✅ Bot iniciado como: ${client.user.tag}`);
+            try {
+
+                await loadModelsIntoClient(client);
+
+                if (!process.env.DEBUG_MODE) {
+                    supporterWorker(client, SUPPORTER_CHECK_PERIOD);
+                    announceWorker(client, ANNOUNCE_CHECK_PERIOD);
+                } else {
+                    client.logger.debug('DEBUG_MODE ativo — Workers não serão iniciados.');
+                }
+            } catch (readyErr) {
+                client.logger.error('Erro durante o processamento do evento ready.', { stack: readyErr?.stack || readyErr });
+                notifyError(readyErr);
+            } finally {
+                client.logger.info(`Bot iniciado como: ${client.user.tag}`);
+            }
         });
 
-        client.login(DISCORD_TOKEN);
+        client.logger.info('Realizando login no Discord.');
+        client.login(DISCORD_TOKEN).then(() => {
+            client.logger.info('Login solicitado. Aguardando evento ready...');
+        }).catch(loginErr => {
+            client.logger.error('Falha no login do client.', { stack: loginErr?.stack || loginErr });
+            notifyError(loginErr);
+        });
     } catch (error) {
-        console.error('Erro ao iniciar o bot:', error);
+        client.logger.error('Erro ao iniciar o bot:', { stack: error?.stack || error });
         notifyError(error);
     }
 })();

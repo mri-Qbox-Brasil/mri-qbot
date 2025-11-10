@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 async function loadCommands(client, commandsPath = './src/commands') {
+    client.logger.info('Iniciando carregamento de comandos...');
     const commands = [];
 
     function readFiles(dir) {
@@ -17,34 +18,35 @@ async function loadCommands(client, commandsPath = './src/commands') {
                     const command = require(filePath);
 
                     if (!command?.data?.name) {
-                        console.warn(`[AVISO] O comando em "${filePath}" não possui um nome definido.`);
+                        client.logger.warn(`[AVISO] O comando em "${filePath}" não possui um nome definido.`);
                         continue;
                     }
 
                     client.commands.set(command.data.name, command);
                     commands.push(command.data.toJSON());
                 } catch (err) {
-                    console.error(`[ERRO] Falha ao carregar o comando em "${filePath}":`, err);
+                    client.logger.error(`[ERRO] Falha ao carregar o comando em "${filePath}":`, { stack: err?.stack || err });
                 }
             }
         }
     }
 
     readFiles(commandsPath);
+    client.logger.info(`Comandos carregados: ${commands.length}`);
     return commands;
 }
 
 async function loadEvents(client, eventsPath = './src/events') {
+    client.logger.info('Iniciando carregamento de eventos...');
     const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
     let loadedCount = 0;
-
     for (const file of eventFiles) {
         const filePath = path.resolve(eventsPath, file);
         try {
             const event = require(filePath);
 
             if (!event?.name || typeof event.execute !== 'function') {
-                console.warn(`[AVISO] O evento em "${filePath}" está malformado (sem nome ou função execute).`);
+                client.logger.warn(`[AVISO] O evento em "${filePath}" está malformado (sem nome ou função execute).`);
                 continue;
             }
 
@@ -56,11 +58,20 @@ async function loadEvents(client, eventsPath = './src/events') {
 
             loadedCount++;
         } catch (err) {
-            console.error(`[ERRO] Falha ao carregar o evento em "${filePath}":`, err);
+            client.logger.error(`[ERRO] Falha ao carregar o evento em "${filePath}":`, { stack: err?.stack || err });
         }
     }
 
-    console.log(`Eventos registrados: ${loadedCount}/${eventFiles.length}`);
+    client.logger.info(`Eventos registrados: ${loadedCount}/${eventFiles.length}`);
+}
+
+function safeCount(x) {
+    if (!x) return 0;
+    if (Array.isArray(x)) return x.length;
+    if (typeof x.size === 'number') return x.size;
+    if (typeof x.length === 'number') return x.length;
+    if (typeof x === 'object') return Object.keys(x).length;
+    return 0;
 }
 
 module.exports = { loadCommands, loadEvents };

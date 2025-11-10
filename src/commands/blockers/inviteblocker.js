@@ -202,15 +202,15 @@ module.exports = {
 
     async onMessageCreate(message) {
 
+        if (!await this.validadeBlockerEnabled(message)) {
+            return;
+        }
+
         if (this.validateAuthor(message)) {
             return;
         }
 
         if (!this.validateRegex(message, inviteRegex)) {
-            return;
-        }
-
-        if (!await this.validadeBlockerEnabled(message)) {
             return;
         }
 

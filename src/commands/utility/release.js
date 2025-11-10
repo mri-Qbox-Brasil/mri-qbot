@@ -56,7 +56,6 @@ module.exports = {
 				embed.setURL(repoUrl);
 
 				await targetChannel.send({ embeds: [embed] }).catch(async (err) => {
-					console.error('Erro ao enviar embed de release:', err);
 					notifyError({
 						client: interaction.client,
 						user: interaction.user,
@@ -124,14 +123,12 @@ module.exports = {
 			}
 
 		} catch (error) {
-			console.error(`Erro no comando /release:`, error);
-
 			notifyError({
 				client: interaction.client,
 				user: interaction.user,
 				channel: interaction.channel,
 				guild: interaction.guild,
-				context: `/release`,
+				context: `/${this.data.name}`,
 				error
 			});
 
