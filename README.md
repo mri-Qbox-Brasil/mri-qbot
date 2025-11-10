@@ -50,6 +50,7 @@ Add your commands to the `src/commands` folder and events to the `src/events` fo
 
 - **ping**: Responds with "Pong!".
 - **info**: Provides information about the bot.
+- **geminimoderator**: Configures the AI-powered message moderator using Google Gemini API. This feature monitors a specific channel and uses AI to determine if messages are in the wrong channel, then notifies users with guidance on the correct channel.
 
 ## Building and Docker
 
