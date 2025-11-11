@@ -89,7 +89,7 @@ async function checkMessageWithGemini(
   }
 
   // Monta o prompt completo com contexto no formato esperado
-  const fullPrompt = `${prompt} Canal : ${channelName} Mensagem: ${messageContent}.`;
+  const fullPrompt = `${prompt} Canal: ${channelName} Mensagem: ${messageContent}.`;
 
   try {
     const response = await axios.post(
