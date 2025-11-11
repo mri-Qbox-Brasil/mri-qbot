@@ -6,8 +6,9 @@ const hasPermission = require("../../utils/permissionUtils");
 const DEFAULT_MESSAGE =
   "Esta mensagem se trata de uma duvida referente a servidor de fivem QB/QBOX/MRI ou de ajuda em algum script , se sim solicite ajuda no canal {target_channel}, caso considera a mensagem um engano abra um ticket";
 const DEFAULT_PROMPT =
-  "Esta mensagem foi postada no canal errado? Analise o conteúdo da mensagem e o nome do canal. Responda APENAS 'sim' ou 'não', sem explicações.";
+  'Verifique se a mensagem expressa intenção de ajuda, suporte técnico ou dúvida relacionada a servidores ou desenvolvimento para FiveM, incluindo frameworks como QBOX, QBCore, ESX, VRP, MRI, scripts, assets, configuração ou correção de erros. Somente responda "sim" se a mensagem contiver ao menos um dos seguintes elementos: Pedido de ajuda (ex: como faço?, alguém sabe?, tem como arrumar?) Relato de erro ou problema (ex: erro, bug, não funciona, quebrando, travando) Pergunta técnica sobre scripts, eventos, exports, configs etc. Responda "não" se a mensagem apenas: Menciona algo sobre FiveM sem pedir ajuda Está comemorando, contando, comentando, rindo, ou é conversa comum Não envolve configuração, troubleshooting ou desenvolvimento Formato de resposta: Responda apenas sim ou não. Sem explicações.';
 const DEFAULT_TIMEOUT = 10;
+const DEFAULT_MODEL = "google/gemma-3-27b-it:free";
 
 /**
  * Normaliza um objeto de configuração que pode estar corrompido
@@ -80,6 +81,7 @@ async function updateGeminiModeratorSettings(client, guildId, updates) {
       message: DEFAULT_MESSAGE,
       prompt: DEFAULT_PROMPT,
       messageTimeout: DEFAULT_TIMEOUT,
+      model: DEFAULT_MODEL,
     };
   }
 
@@ -91,6 +93,7 @@ async function updateGeminiModeratorSettings(client, guildId, updates) {
     message: DEFAULT_MESSAGE,
     prompt: DEFAULT_PROMPT,
     messageTimeout: DEFAULT_TIMEOUT,
+    model: DEFAULT_MODEL,
   };
 
   // Mesclar com padrões primeiro, depois com valores existentes, depois com updates
@@ -104,6 +107,7 @@ async function updateGeminiModeratorSettings(client, guildId, updates) {
     message: updatedConfig.message,
     prompt: updatedConfig.prompt,
     messageTimeout: updatedConfig.messageTimeout,
+    model: updatedConfig.model || DEFAULT_MODEL,
   };
 
   await setGeminiModeratorConfig(client, guildId, cleanConfig);
@@ -184,8 +188,19 @@ async function handleSetPrompt(interaction) {
     interaction.guild.id,
     { prompt }
   );
+  return createGeminiModeratorEmbed("Prompt atualizado.", EmbedColors.SUCCESS);
+}
+
+// Subcomando: Definir modelo
+async function handleSetModel(interaction) {
+  const model = interaction.options.getString("modelo");
+  await updateGeminiModeratorSettings(
+    interaction.client,
+    interaction.guild.id,
+    { model }
+  );
   return createGeminiModeratorEmbed(
-    "Prompt do Gemini atualizado.",
+    `Modelo atualizado para **${model}**.`,
     EmbedColors.SUCCESS
   );
 }
@@ -250,6 +265,12 @@ async function handleStatus(interaction) {
     name: "Prompt",
     value: (config.prompt || DEFAULT_PROMPT).substring(0, 1024),
     inline: false,
+  });
+
+  fields.push({
+    name: "Modelo",
+    value: config.model || DEFAULT_MODEL,
+    inline: true,
   });
 
   return createGeminiModeratorEmbed(
@@ -319,13 +340,24 @@ module.exports = {
     .addSubcommand((sub) =>
       sub
         .setName("set-prompt")
-        .setDescription("Define o prompt usado para a API do Gemini.")
+        .setDescription("Define o prompt usado para a API.")
         .addStringOption((option) =>
           option
             .setName("prompt")
-            .setDescription("Prompt personalizado para a API do Gemini.")
+            .setDescription("Prompt personalizado para a API.")
             .setRequired(true)
-            .setMaxLength(1000)
+            .setMaxLength(2000)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("set-model")
+        .setDescription("Define o modelo de IA a ser usado.")
+        .addStringOption((option) =>
+          option
+            .setName("modelo")
+            .setDescription("Nome do modelo (ex: google/gemma-3-27b-it:free).")
+            .setRequired(true)
         )
     )
     .addSubcommand((sub) =>
@@ -358,6 +390,8 @@ module.exports = {
       embed = await handleSetMessage(interaction);
     } else if (subcommand === "set-prompt") {
       embed = await handleSetPrompt(interaction);
+    } else if (subcommand === "set-model") {
+      embed = await handleSetModel(interaction);
     } else if (subcommand === "status") {
       embed = await handleStatus(interaction);
     }
