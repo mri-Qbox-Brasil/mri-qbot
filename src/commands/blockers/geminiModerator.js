@@ -1,11 +1,11 @@
 const { checkMessageWithGemini } = require("../../utils/geminiUtils");
 
 const DEFAULT_MESSAGE =
-    'Esta mensagem se trata de uma duvida referente a servidor de fivem QB/QBOX/MRI ou de ajuda em algum script?' +
-    ' Se sim solicite ajuda em {target_channel}. Caso considere a mensagem um engano abra um ticket';
-const DEFAULT_PROMPT = 'Esta mensagem esta relacionada a algum tipo de ajuda com servidor de fivem QB/QBOX/MRI ou de ajuda em algum script?' +
-    ' Analise o conteúdo da mensagem e o nome do canal. Responda APENAS \'sim\' ou \'não\', sem explicações.';
+  "Esta mensagem se trata de uma duvida referente a servidor de fivem QB/QBOX/MRI ou de ajuda em algum script , se sim solicite ajuda no canal {target_channel}, caso considera a mensagem um engano abra um ticket";
+const DEFAULT_PROMPT =
+  'Verifique se a mensagem expressa intenção de ajuda, suporte técnico ou dúvida relacionada a servidores ou desenvolvimento para FiveM, incluindo frameworks como QBOX, QBCore, ESX, VRP, MRI, scripts, assets, configuração ou correção de erros. Somente responda "sim" se a mensagem contiver ao menos um dos seguintes elementos: Pedido de ajuda (ex: como faço?, alguém sabe?, tem como arrumar?) Relato de erro ou problema (ex: erro, bug, não funciona, quebrando, travando) Pergunta técnica sobre scripts, eventos, exports, configs etc. Responda "não" se a mensagem apenas: Menciona algo sobre FiveM sem pedir ajuda Está comemorando, contando, comentando, rindo, ou é conversa comum Não envolve configuração, troubleshooting, tirar duvidaas Formato de resposta: Responda apenas sim ou não. Sem explicações.';
 const DEFAULT_TIMEOUT = 10;
+const DEFAULT_MODEL = "google/gemma-3-27b-it:free";
 
 /**
  * Normaliza um objeto de configuração que pode estar corrompido
@@ -86,6 +86,11 @@ async function getPrompt(client, guildId) {
 async function getMessageTimeout(client, guildId) {
   const config = await getGeminiModeratorConfig(client, guildId);
   return config ? config.messageTimeout || DEFAULT_TIMEOUT : DEFAULT_TIMEOUT;
+}
+
+async function getModel(client, guildId) {
+  const config = await getGeminiModeratorConfig(client, guildId);
+  return config ? config.model || DEFAULT_MODEL : DEFAULT_MODEL;
 }
 
 /**
@@ -202,7 +207,12 @@ async function onMessageCreate(message) {
     }
 
     const guildId = message.guild.id;
-    let prompt, targetChannelId, notificationMessage, messageTimeout, apiKey;
+    let prompt,
+      targetChannelId,
+      notificationMessage,
+      messageTimeout,
+      apiKey,
+      model;
 
     try {
       prompt = await getPrompt(message.client, guildId);
@@ -212,6 +222,7 @@ async function onMessageCreate(message) {
         guildId
       );
       messageTimeout = await getMessageTimeout(message.client, guildId);
+      model = await getModel(message.client, guildId);
       apiKey = process.env.AI_TOKEN;
     } catch (error) {
       console.error(
@@ -240,7 +251,8 @@ async function onMessageCreate(message) {
       apiKey,
       prompt,
       messageContent,
-      channelName
+      channelName,
+      model
     );
     if (shouldDelete === null) {
       console.error(
