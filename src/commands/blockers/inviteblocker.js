@@ -34,7 +34,11 @@ async function updateInviteBlockerSettings(client, guildId, updates) {
     await setBlockerConfig(client, guildId, updatedConfig);
 }
 
-const inviteRegex = /(https?:\/\/)(www\.)?(discord\.(gg|com)(\/invite)?\/[^\s]+)/i;
+// Detecta convites legítimos:
+// - discord.gg/<code>
+// - discord.com/invite/<code>  (ou discordapp.com/invite/<code>)
+// Não corresponde a discord.com/channels/... ou outros caminhos.
+const inviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)[\w-]+(?:\/?\S*)?/i;
 const MSG_TIMEOUT = 10;
 
 // Cria embed padrão
