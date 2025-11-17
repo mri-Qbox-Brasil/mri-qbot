@@ -19,7 +19,7 @@
         "sequelize": "^6.37.7"
     },
     "devDependencies": {
-        "nodemon": "^3.1.10",
+        "nodemon": "^3.1.11",
         "sqlite3": "^5.1.7"
     }
 }
