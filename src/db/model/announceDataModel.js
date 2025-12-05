@@ -35,5 +35,17 @@ module.exports = (sequelize) => {
             type: DataTypes.TEXT,
             allowNull: true,
         },
+        attachments: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
+        lockedUntil: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
+        sentAt: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
     });
 }

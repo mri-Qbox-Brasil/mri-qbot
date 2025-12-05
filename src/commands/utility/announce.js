@@ -9,6 +9,13 @@ const {
     MessageFlags,
 } = require('discord.js');
 const { sendReply } = require('../../utils/generalUtils');
+const axios = require('axios');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { pipeline } = require('stream');
+const { promisify } = require('util');
+const streamPipeline = promisify(pipeline);
 
 const DEFAULT_TIMEOUT_HOURS = parseInt(process.env.ANNOUNCE_TIMEOUT_HOURS || '24', 10);
 const MSG_TIMEOUT = 45;
@@ -117,6 +124,7 @@ module.exports = {
                 cmdChannelId: commandChannelId,
                 cmdMessageId: commandMessageId,
                 announceChannelId: tempChannel.id,
+                attachments: JSON.stringify([]),
             });
 
             // customId inclui announceData.id para rastrear o canal de anúncio:
@@ -173,6 +181,12 @@ module.exports = {
                 }).then(announceDataEntry => {
                     if (announceDataEntry) {
                         announceDataEntry.content = msg.content;
+                        try {
+                            const atts = msg.attachments ? msg.attachments.map(a => ({ url: a.url, name: a.name || a.id })) : [];
+                            announceDataEntry.attachments = JSON.stringify(atts);
+                        } catch (_) {
+                            // ignore attachment extraction errors
+                        }
                         announceDataEntry.save().catch(() => { });
                     }
                 })
@@ -328,7 +342,8 @@ module.exports = {
         }
 
         await AnnounceData.update({
-            content: message.content
+            content: message.content,
+            attachments: JSON.stringify(message.attachments ? message.attachments.map(a => ({ url: a.url, name: a.name || a.id })) : [])
         }, {
             where: { id: announceDataEntry.id }
         });
@@ -397,7 +412,8 @@ module.exports = {
 
             newMessage.client.logger.debug(`[announce onMessageUpdate] atualizando rascunho de anúncio com nova mensagem editada: ${newMessage.content}`);
             await AnnounceData.update({
-                content: newMessage.content
+                content: newMessage.content,
+                attachments: JSON.stringify(newMessage.attachments ? newMessage.attachments.map(a => ({ url: a.url, name: a.name || a.id })) : [])
             }, {
                 where: { id: announceDataEntry.id }
             });
@@ -555,12 +571,79 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
 
     if (!announceDataEntry) return;
 
-    // evitar envios duplicados (collector + handler global)
-    if (processingSends.has(announceDataEntry.id)) {
-        try { await interaction.reply({ content: 'Anúncio já está sendo processado...', flags: MessageFlags.Ephemeral }); } catch(_) {}
-        return;
+    // try to refresh content from the actual last user message in the temp channel
+    try {
+        const client = interaction.client;
+        const tempChannel = await client.channels.fetch(channelId).catch(() => null);
+        if (tempChannel && tempChannel.isTextBased()) {
+            try {
+                const fetched = await tempChannel.messages.fetch({ limit: 20 });
+                if (fetched && fetched.size > 0) {
+                    // find the most recent message by the owner
+                    const ownerMsg = fetched.find(m => m.author && m.author.id === announceDataEntry.ownerId);
+                    if (ownerMsg) {
+                        // update DB with latest content and attachments before sending
+                        announceDataEntry.content = ownerMsg.content;
+                        try {
+                            const atts = ownerMsg.attachments ? ownerMsg.attachments.map(a => ({ url: a.url, name: a.name || a.id })) : [];
+                            announceDataEntry.attachments = JSON.stringify(atts);
+                        } catch (_) { /* ignore */ }
+                        await announceDataEntry.save().catch(() => {});
+                    }
+                }
+            } catch (_) {
+                // ignore fetch errors, fallback to DB content
+            }
+        }
+    } catch (_) { /* ignore */ }
+
+    // Persistent DB lock to avoid cross-process duplication
+    const sequelize = interaction.client.db?.sequelize;
+    const AnnounceDataModel = interaction.client.db?.AnnounceData;
+    const LOCK_TTL_MS = 30 * 1000; // 30s lock
+    let acquiredLock = false;
+    if (sequelize && AnnounceDataModel) {
+        const t = await sequelize.transaction();
+        try {
+            // re-load row with FOR UPDATE
+            const row = await AnnounceDataModel.findOne({ where: { id: announceDataEntry.id }, transaction: t, lock: t.LOCK.UPDATE });
+            const now = new Date();
+            if (row.sentAt) {
+                // already sent
+                await t.commit();
+                try { await interaction.reply({ content: 'Este anúncio já foi enviado anteriormente.', flags: MessageFlags.Ephemeral }); } catch(_) {}
+                return;
+            }
+            if (row.lockedUntil && new Date(row.lockedUntil) > now) {
+                // locked by other instance
+                await t.commit();
+                try { await interaction.reply({ content: 'Anúncio já está sendo processado por outra instância.', flags: MessageFlags.Ephemeral }); } catch(_) {}
+                return;
+            }
+            // acquire lock
+            row.lockedUntil = new Date(Date.now() + LOCK_TTL_MS);
+            await row.save({ transaction: t });
+            await t.commit();
+            acquiredLock = true;
+        } catch (err) {
+            try { await t.rollback(); } catch(_) {}
+            interaction.client.logger.debug('[announce executeSend] falha ao adquirir lock DB', { error: err?.stack || err });
+            // fallback to in-memory lock
+            if (processingSends.has(announceDataEntry.id)) {
+                try { await interaction.reply({ content: 'Anúncio já está sendo processado...', flags: MessageFlags.Ephemeral }); } catch(_) {}
+                return;
+            }
+            processingSends.add(announceDataEntry.id);
+        }
+    } else {
+        // fallback in-memory lock
+        if (processingSends.has(announceDataEntry.id)) {
+            try { await interaction.reply({ content: 'Anúncio já está sendo processado...', flags: MessageFlags.Ephemeral }); } catch(_) {}
+            return;
+        }
+        processingSends.add(announceDataEntry.id);
+        acquiredLock = true;
     }
-    processingSends.add(announceDataEntry.id);
 
     if (!announceDataEntry.content) {
         await interaction.reply({ content: 'Nenhum rascunho encontrado. Envie uma mensagem neste canal antes de enviar o anúncio.', flags: MessageFlags.Ephemeral });
@@ -582,11 +665,77 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
     }
 
     try {
-        await targetChannel.send({ content: announceDataEntry.content });
+        let attachments = [];
+        if (announceDataEntry.attachments) {
+            try { attachments = JSON.parse(announceDataEntry.attachments) || []; } catch (_) { attachments = []; }
+        }
+
+        // attachments may be array of strings (legacy) or objects {url,name}
+        const files = [];
+        const tempFilesToRemove = [];
+        const MAX_IN_MEMORY = 5 * 1024 * 1024; // 5 MB
+        for (const a of attachments) {
+            try {
+                if (!a) continue;
+                const url = typeof a === 'string' ? a : a.url;
+                const name = typeof a === 'string' ? (a.split('?')[0].split('/').pop() || 'file') : (a.name || (a.url.split('?')[0].split('/').pop()) || 'file');
+
+                // try to HEAD to get size
+                let useStream = false;
+                try {
+                    const head = await axios.head(url, { timeout: 5000 }).catch(() => null);
+                    const len = head?.headers?.['content-length'] ? parseInt(head.headers['content-length'], 10) : NaN;
+                    if (!isNaN(len) && len > MAX_IN_MEMORY) useStream = true;
+                } catch (_) { /* ignore */ }
+
+                if (!useStream) {
+                    // try small download into memory
+                    const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 20000 });
+                    const buffer = Buffer.from(res.data);
+                    if (buffer.length > MAX_IN_MEMORY) {
+                        // fallback to stream-to-disk
+                        useStream = true;
+                    } else {
+                        files.push({ attachment: buffer, name });
+                        continue;
+                    }
+                }
+
+                if (useStream) {
+                    // stream to temp file
+                    const tmpPath = path.join(os.tmpdir(), `announce-${announceDataEntry.id}-${Date.now()}-${name}`.replace(/[^a-zA-Z0-9._-]/g, '_'));
+                    const response = await axios.get(url, { responseType: 'stream', timeout: 60000 });
+                    const writer = fs.createWriteStream(tmpPath);
+                    await streamPipeline(response.data, writer);
+                    files.push({ attachment: tmpPath, name });
+                    tempFilesToRemove.push(tmpPath);
+                }
+            } catch (err) {
+                interaction.client.logger.debug('[announce executeSend] falha ao baixar attachment', { url: a?.url || a, error: err?.stack || err });
+            }
+        }
+
+        if (files.length > 0) {
+            await targetChannel.send({ content: announceDataEntry.content, files });
+        } else {
+            await targetChannel.send({ content: announceDataEntry.content });
+        }
+
+        // cleanup temp files
+        for (const f of tempFilesToRemove) {
+            try { fs.unlinkSync(f); } catch (_) { }
+        }
         // editar mensagem do comando e confirmar para o usuário
         await deferReply(interaction, cmdChannelId, cmdMessageId, `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`);
         try { await interaction.reply({ content: `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`, flags: MessageFlags.Ephemeral }); } catch (_) { /* ignore if already replied/updated */ }
         await cleanup(interaction, channelId, 'sent');
+        // mark sentAt and clear lockedUntil
+        try {
+            const AnnounceDataModel = interaction.client.db?.AnnounceData;
+            if (AnnounceDataModel) {
+                await AnnounceDataModel.update({ sentAt: new Date(), lockedUntil: null }, { where: { id: announceDataEntry.id } }).catch(() => {});
+            }
+        } catch (_) { }
         processingSends.delete(announceDataEntry.id);
     } catch (err) {
         interaction.client.notifyError({
@@ -598,6 +747,13 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
             error: err
         });
         try { await interaction.reply({ content: 'Falha ao enviar o anúncio para o canal selecionado.', flags: MessageFlags.Ephemeral }); } catch(_) {}
+        // clear lock on error
+        try {
+            const AnnounceDataModel = interaction.client.db?.AnnounceData;
+            if (AnnounceDataModel) {
+                await AnnounceDataModel.update({ lockedUntil: null }, { where: { id: announceDataEntry.id } }).catch(() => {});
+            }
+        } catch (_) { }
         processingSends.delete(announceDataEntry.id);
         return;
     }
