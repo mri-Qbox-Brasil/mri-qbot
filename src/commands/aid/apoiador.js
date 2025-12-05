@@ -2,8 +2,7 @@ const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
 const { SupportActionType } = require('../../utils/constants');
-const hasPermission = require('../../utils/permissionUtils');
-const { notifyError } = require('../../utils/errorHandler');
+const { hasPermission }  = require('../../utils/permissionUtils');
 const moment = require('moment');
 
 async function createLog({ supporterData, actionType, performedBy, transaction, interaction }) {
@@ -152,16 +151,20 @@ module.exports = {
         try {
             await handlers[interaction.options.getSubcommand()]();
         } catch (error) {
-            console.error(`Erro no comando /${this.data.name}:`, error);
+            interaction.client.logger?.error(`Erro no comando /${this.data.name}:`, { stack: error?.stack || error });
 
-            notifyError({
-                client: interaction.client,
-                user: interaction.user,
-                channel: interaction.channel,
-                guild: interaction.guild,
-                context: `/${this.data.name}`,
-                error
-            });
+            try {
+                interaction.client.notifyError({
+                    client: interaction.client,
+                    user: interaction.user,
+                    channel: interaction.channel,
+                    guild: interaction.guild,
+                    context: `/${this.data.name}`,
+                    error
+                });
+            } catch (_) {
+                interaction.client.logger?.error('Falha ao notificar erro do comando /apoiador', { stack: _?.stack || _ });
+            }
 
             const embed = await createSupporterEmbed({
                 description: 'Ocorreu um erro ao executar o comando.',
@@ -262,7 +265,7 @@ async function handleAdd(interaction) {
         });
     } catch (error) {
         await transaction.rollback();
-        console.error('Erro ao adicionar apoio:', error);
+        interaction.client.logger?.error('Erro ao adicionar apoio:', { stack: error?.stack || error });
         const embed = await createSupporterEmbed({ description: 'Ocorreu um erro ao processar o comando.', color: EmbedColors.DANGER, fields: [{ name: 'Detalhes', value: error.message }] });
         return interaction.editReply({
             embeds: [embed]
@@ -332,7 +335,7 @@ async function handleEdit(interaction) {
         });
     } catch (error) {
         await transaction.rollback();
-        console.error('Erro ao editar apoio:', error);
+        interaction.client.logger?.error('Erro ao editar apoio:', { stack: error?.stack || error });
 
         const embed = await createSupporterEmbed({ description: 'Ocorreu um erro ao processar o comando.', color: EmbedColors.DANGER, fileds: [{ name: 'Detalhes', value: error.message }] });
         return interaction.editReply({
@@ -371,7 +374,7 @@ async function handleRemove(interaction) {
         });
     } catch (error) {
         await transaction.rollback();
-        console.error('Erro ao remover apoio:', error);
+        interaction.client.logger?.error('Erro ao remover apoio:', { stack: error?.stack || error });
 
         const embed = await createSupporterEmbed({ description: 'Ocorreu um erro ao processar o comando.', color: EmbedColors.DANGER, fileds: [{ name: 'Detalhes', value: error.message }] });
         return interaction.editReply({

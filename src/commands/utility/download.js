@@ -1,7 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
 const { fetchArtifactLinks } = require('../../utils/artifactUtils');
-const { notifyError } = require('../../utils/errorHandler');
 
 const BASE_URL = 'https://artifacts.jgscripts.com';
 
@@ -36,7 +35,7 @@ function buildArtifactButtons({ version, windowsLink, linuxLink }) {
     return buttons;
 }
 
-async function createMriEmbed({ description, color }) {
+async function createDownloadEmbed({ description, color }) {
     return createEmbed({
         title: 'Downloads - Mri Qbox',
         description,
@@ -54,7 +53,7 @@ module.exports = {
         try {
             const { version, windowsLink, linuxLink } = await fetchArtifactLinks(BASE_URL);
 
-            const embed = await createMriEmbed({
+            const embed = await createDownloadEmbed({
                 description: `Versão dos artefatos sugerida por [JGScripts](${BASE_URL}): ${version}\n\n⚠️ **Aviso:** A última versão de artefatos sugerida pode ter bugs não reportados ainda`,
                 color: EmbedColors.SUCCESS
             });
@@ -67,18 +66,20 @@ module.exports = {
             });
 
         } catch (error) {
-            console.error(`Erro no comando /${this.data.name}:`, error);
+            try {
+                interaction.client.notifyError({
+                    client: interaction.client,
+                    user: interaction.user,
+                    channel: interaction.channel,
+                    guild: interaction.guild,
+                    context: `/${this.data.name}`,
+                    error
+                });
+            } catch (_) {
+                interaction.client.logger?.error('Falha ao notificar erro do comando /download', { stack: _?.stack || _ });
+            }
 
-            notifyError({
-                client: interaction.client,
-                user: interaction.user,
-                channel: interaction.channel,
-                guild: interaction.guild,
-                context: `/${this.data.name}`,
-                error
-            });
-
-            const embed = await createMriEmbed({
+            const embed = await createDownloadEmbed({
                 description: 'Ocorreu um erro ao executar o comando.',
                 color: EmbedColors.DANGER
             });

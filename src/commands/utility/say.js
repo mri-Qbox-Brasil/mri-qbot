@@ -1,8 +1,7 @@
 const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
-const hasPermission = require('../../utils/permissionUtils');
-const { notifyError } = require('../../utils/errorHandler');
+const { hasPermission } = require('../../utils/permissionUtils');
 
 async function createSayEmbed({description, color, fields}) {
     return createEmbed({
@@ -33,7 +32,6 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        // Verificação de permissão
         if (!await hasPermission(interaction, 'say')) {
             const embed = await createSayEmbed({description: 'Você não tem permissão para usar este comando.', color: EmbedColors.DANGER});
             return interaction.editReply({ embeds: [embed] });
@@ -43,31 +41,32 @@ module.exports = {
         const canalDestino = interaction.options.getChannel('canal') || interaction.channel;
 
         try {
-            // Verifica se o canal selecionado é válido para mensagens de texto
             if (!canalDestino.isTextBased()) {
                 const embed = await createSayEmbed({description: 'Por favor, selecione um canal de texto válido.', color: EmbedColors.WARNING});
                 return interaction.editReply({ embeds: [embed] });
             }
 
-            // Envia a mensagem para o canal especificado
             await canalDestino.send(mensagem);
 
             const embed = await createSayEmbed({description: `Mensagem enviada com sucesso para ${canalDestino}.`, color: EmbedColors.SUCCESS});
             return interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
-            console.error(`Erro no comando /${this.data.name}:`, error);
+            // use client.notifyError for consistency
+            try {
+                interaction.client.notifyError({
+                    client: interaction.client,
+                    user: interaction.user,
+                    channel: interaction.channel,
+                    guild: interaction.guild,
+                    context: `/${this.data.name}`,
+                    error
+                });
+            } catch (_) {
+                interaction.client.logger?.error('Falha ao notificar erro do comando /say', { stack: _?.stack || _ });
+            }
 
-            notifyError({
-                client: interaction.client,
-                user: interaction.user,
-                channel: interaction.channel,
-                guild: interaction.guild,
-                context: `/${this.data.name}`,
-                error
-            });
-
-            const embed = await createMriEmbed({
+            const embed = await createSayEmbed({
                 description: 'Ocorreu um erro ao executar o comando.',
                 color: EmbedColors.DANGER
             });

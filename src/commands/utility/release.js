@@ -1,7 +1,5 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
-const hasPermission = require('../../utils/permissionUtils');
-const { notifyError } = require('../../utils/errorHandler');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -56,8 +54,7 @@ module.exports = {
 				embed.setURL(repoUrl);
 
 				await targetChannel.send({ embeds: [embed] }).catch(async (err) => {
-					console.error('Erro ao enviar embed de release:', err);
-					notifyError({
+					interaction.client.notifyError({
 						client: interaction.client,
 						user: interaction.user,
 						channel: interaction.channel,
@@ -73,7 +70,7 @@ module.exports = {
 			}
 
 			if (interaction.isChatInputCommand()) {
-				if (!await hasPermission(interaction, 'release')) {
+				if (!await interaction.client.hasPermission(interaction, 'release')) {
 					await interaction.reply({ content: 'Você não tem permissão para usar este comando.', flags: MessageFlags.Ephemeral });
 					return;
 				}
@@ -124,14 +121,12 @@ module.exports = {
 			}
 
 		} catch (error) {
-			console.error(`Erro no comando /release:`, error);
-
-			notifyError({
+			interaction.client.notifyError({
 				client: interaction.client,
 				user: interaction.user,
 				channel: interaction.channel,
 				guild: interaction.guild,
-				context: `/release`,
+				context: `/${this.data.name}`,
 				error
 			});
 

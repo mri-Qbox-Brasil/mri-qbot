@@ -1,23 +1,27 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-    return sequelize.define('CommandRoles', {
+    return sequelize.define('Announces', {
         id: {
             type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
             primaryKey: true,
-            defaultValue: DataTypes.UUIDV4
-        },
-        commandName: {
-            type: DataTypes.STRING,
-            allowNull: false,
-        },
-        roleId: {
-            type: DataTypes.STRING,
-            allowNull: false,
         },
         guildId: {
             type: DataTypes.STRING,
-            allowNull: false
-        }
+            allowNull: false,
+        },
+        channelId: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        channelName: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        expiryDate: {
+            type: DataTypes.DATE,
+            allowNull: false,
+        },
     });
-};
+}

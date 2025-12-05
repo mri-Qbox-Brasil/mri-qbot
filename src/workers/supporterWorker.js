@@ -5,7 +5,7 @@ const { SupportActionType } = require('../utils/constants');
 const { EmbedColors } = require('../utils/embedUtils');
 const { EmbedBuilder } = require('discord.js'); // você usa EmbedBuilder mas não tinha importado
 
-async function expirySupport(supporter, transaction, Supporters) {
+async function expirySupport(client, supporter, transaction, Supporters) {
     const [affectedRows] = await Supporters.update(
         { active: false },
         {
@@ -15,12 +15,12 @@ async function expirySupport(supporter, transaction, Supporters) {
     );
 
     if (affectedRows === 0) {
-        console.log(`Nenhum registro atualizado para id: ${supporter.id}`);
+        client.logger.warn(`Nenhum registro atualizado para id: ${supporter.id}`);
     }
     return affectedRows;
 }
 
-async function logRoleExpiration(supporter, transaction, SupporterLogs) {
+async function logRoleExpiration(client, supporter, transaction, SupporterLogs) {
     await SupporterLogs.create({
         supportId: supporter.id,
         userId: supporter.userId,
@@ -30,13 +30,14 @@ async function logRoleExpiration(supporter, transaction, SupporterLogs) {
         performedBy: 'system',
         actionDate: new Date(),
     }, { transaction });
+    client.logger.info(`Log de expiração criado para supporter id: ${supporter.id}`);
 }
 
-async function sendSupportMessage(supportUser, roleName, username) {
+async function sendSupportMessage(client, supportUser, roleName, username) {
     try {
         await supportUser.send(`O apoio ${roleName} de ${username} chegou ao fim.`);
     } catch (error) {
-        console.error(`Erro ao enviar DM para ${supportUser?.user?.username || 'desconhecido'}: ${error.message}`);
+        client.logger.error(`Erro ao enviar DM para ${supportUser?.user?.username || 'desconhecido'}: ${error.message}`);
     }
 }
 
@@ -63,7 +64,7 @@ async function checkExpiredRoles(client) {
 
             if (member && role) {
                 await member.roles.remove(role).catch(err => {
-                    console.error(`Erro ao remover apoio ${role.name} de ${member.user.username}: ${err.message}`);
+                    client.logger.error(`Erro ao remover apoio ${role.name} de ${member.user.username}: ${err.message}`);
                     client.users.fetch(guild.ownerId).then((owner) => {
                         const embed = new EmbedBuilder()
                             .setTitle('Erro ao expirar apoio')
@@ -80,29 +81,30 @@ async function checkExpiredRoles(client) {
                             .setTimestamp();
 
                         owner.send({ embeds: [embed] })
-                            .then(() => console.log('Embed enviado com sucesso!'))
-                            .catch((error) => console.error('Erro ao enviar mensagem:', error));
-                    }).catch(console.error);
+                            .then(() => client.logger.info('Embed enviado com sucesso!'))
+                            .catch((error) => client.logger.error('Erro ao enviar mensagem:', { stack: error?.stack || error }));
+                    }).catch(client.logger.error);
                 });
 
                 if (supportUser) {
-                    await sendSupportMessage(supportUser, role.name, member.user.username);
+                    await sendSupportMessage(client, supportUser, role.name, member.user.username);
                 }
 
-                await expirySupport(supporter, transaction, Supporters);
-                await logRoleExpiration(supporter, transaction, SupporterLogs);
+                await expirySupport(client, supporter, transaction, Supporters);
+                await logRoleExpiration(client, supporter, transaction, SupporterLogs);
             }
             await transaction.commit();
         } catch (error) {
-            console.error(`Erro ao processar supporter ${supporter.id}:`, error);
+            client.logger.error(`Erro ao processar supporter ${supporter.id}:`, { stack: error?.stack || error });
             await transaction.rollback();
         }
     }
 }
 
 function supporterWorker(client, checkPeriod = '*/1 * * * *') {
+    client.logger.info('Inicializando supporterWorker.', { period: checkPeriod });
     cron.schedule(checkPeriod, () => {
-        console.log('Verificando cargos expirados...');
+        client.logger.info('Verificando cargos expirados...');
         checkExpiredRoles(client);
     });
 }

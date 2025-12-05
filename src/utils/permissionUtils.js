@@ -18,9 +18,11 @@ async function hasPermission(interaction, commandName = 'apoiador') {
         // Verifica se o usuário possui algum dos cargos permitidos
         return [...allowedRoleIds].some(roleId => userRoleIds.has(roleId));
     } catch (error) {
-        console.error('Erro ao verificar permissões:', error);
+        interaction.client.logger.error('Erro ao verificar permissões:', { stack: error?.stack || error });
         return false;
     }
 }
 
-module.exports = hasPermission
+module.exports = {
+    hasPermission
+};
