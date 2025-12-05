@@ -1,9 +1,11 @@
-const { checkMessageWithGemini } = require("../../utils/geminiUtils");
+const { checkMessageWithGemini } = require("../utils/geminiUtils");
+const { isTextMessage, isMessageAuthorBot } = require("../utils/generalUtils");
 
 const DEFAULT_MESSAGE =
-  "Esta mensagem se trata de uma duvida referente a servidor de fivem QB/QBOX/MRI ou de ajuda em algum script , se sim solicite ajuda no canal {target_channel}, caso considera a mensagem um engano abra um ticket";
-const DEFAULT_PROMPT =
-  'Verifique se a mensagem expressa intenção de ajuda, suporte técnico ou dúvida relacionada a servidores ou desenvolvimento para FiveM, incluindo frameworks como QBOX, QBCore, ESX, VRP, MRI, scripts, assets, configuração ou correção de erros. Somente responda "sim" se a mensagem contiver ao menos um dos seguintes elementos: Pedido de ajuda (ex: como faço?, alguém sabe?, tem como arrumar?) Relato de erro ou problema (ex: erro, bug, não funciona, quebrando, travando) Pergunta técnica sobre scripts, eventos, exports, configs etc. Responda "não" se a mensagem apenas: Menciona algo sobre FiveM sem pedir ajuda Está comemorando, contando, comentando, rindo, ou é conversa comum Não envolve configuração, troubleshooting, tirar dúvidas Formato de resposta: Responda apenas sim ou não. Sem explicações.';
+    'Esta mensagem se trata de uma duvida referente a servidor de fivem QB/QBOX/MRI ou de ajuda em algum script?' +
+    ' Se sim solicite ajuda em {target_channel}. Caso considere a mensagem um engano abra um ticket';
+const DEFAULT_PROMPT = 'Esta mensagem esta relacionada a algum tipo de ajuda com servidor de fivem QB/QBOX/MRI ou de ajuda em algum script?' +
+    ' Analise o conteúdo da mensagem e o nome do canal. Responda APENAS \'sim\' ou \'não\', sem explicações.';
 const DEFAULT_TIMEOUT = 10;
 const DEFAULT_MODEL = "google/gemma-3-27b-it:free";
 
@@ -185,111 +187,120 @@ async function sendNotificationMessage(
  * @param {Message} message - Mensagem recebida
  */
 async function onMessageCreate(message) {
-  try {
-    if (validateAuthor(message)) {
-      return;
-    }
-
-    if (!validateMessageContent(message)) {
-      return;
-    }
-
-    if (!message.guild) {
-      return;
-    }
-
-    if (!(await validateModeratorEnabled(message))) {
-      return;
-    }
-
-    if (!(await validateMonitoredChannel(message))) {
-      return;
-    }
-
-    const guildId = message.guild.id;
-    let prompt,
-      targetChannelId,
-      notificationMessage,
-      messageTimeout,
-      apiKey,
-      model;
-
     try {
-      prompt = await getPrompt(message.client, guildId);
-      targetChannelId = await getTargetChannelId(message.client, guildId);
-      notificationMessage = await getNotificationMessage(
-        message.client,
-        guildId
-      );
-      messageTimeout = await getMessageTimeout(message.client, guildId);
-      model = await getModel(message.client, guildId);
-      apiKey = process.env.AI_TOKEN;
+        if (isMessageAuthorBot(message)) {
+            message.client.logger.debug('[Gemini Moderator] Mensagem ignorada: autor é um bot');
+            return;
+        }
+
+        if (!isTextMessage(message)) {
+            message.client.logger.debug('[Gemini Moderator] Mensagem ignorada: nenhuma mensagem de texto');
+            return;
+        }
+
+        if (!message.guild) {
+            message.client.logger.debug('[Gemini Moderator] Mensagem ignorada: servidor desconhecido');
+            return;
+        }
+
+        if (!(await validateModeratorEnabled(message))) {
+            message.client.logger.debug('[Gemini Moderator] Mensagem ignorada: moderador desabilitado');
+            return;
+        }
+
+        if (!(await validateMonitoredChannel(message))) {
+            message.client.logger.debug('[Gemini Moderator] Mensagem ignorada: postado fora do canal monitorado');
+            return;
+        }
+
+        const guildId = message.guild.id;
+        let prompt, targetChannelId, notificationMessage, messageTimeout, apiKey;
+
+        try {
+            prompt = await getPrompt(message.client, guildId);
+            targetChannelId = await getTargetChannelId(message.client, guildId);
+            notificationMessage = await getNotificationMessage(
+                message.client,
+                guildId
+            );
+            messageTimeout = await getMessageTimeout(message.client, guildId);
+            apiKey = process.env.AI_TOKEN;
+        } catch (error) {
+            message.client.logger.error(
+                `[Gemini Moderator] Erro ao obter configurações para o servidor ${guildId}:`,
+                error
+            );
+            return;
+        }
+
+        if (!targetChannelId) {
+            message.client.logger.warn(
+                `[Gemini Moderator] Mensagem ignorada: canal de ajuda não configurado para o servidor ${guildId}`
+            );
+            return;
+        }
+
+        if (!apiKey) {
+            message.client.logger.error("[Gemini Moderator] AI_TOKEN não configurado no ambiente");
+            return;
+        }
+
+        const messageContent = message.content.trim();
+        const channelName = message.channel.name;
+
+        const shouldDelete = await checkMessageWithGemini(
+            apiKey,
+            prompt,
+            messageContent,
+            channelName
+        );
+        if (shouldDelete === null) {
+            message.client.logger.error(
+                `[Gemini Moderator] Erro ao verificar mensagem com Gemini API para o servidor ${guildId}`
+            );
+            return;
+        }
+
+        if (shouldDelete === true) {
+            try {
+                await message.delete();
+                message.client.logger.info(
+                    `[Gemini Moderator] Mensagem deletada no servidor ${guildId}, canal ${channelName}, autor ${message.author.id}`
+                );
+            } catch (error) {
+                message.client.logger.error(
+                    `[Gemini Moderator] Erro ao deletar mensagem no servidor ${guildId}:`,
+                    error
+                );
+                return;
+            }
+
+            const finalMessage = replaceTargetChannel(
+                notificationMessage,
+                targetChannelId
+            );
+
+            await sendNotificationMessage(message, finalMessage, messageTimeout);
+        }
     } catch (error) {
-      console.error(
-        `Erro ao obter configurações do Gemini Moderator para o servidor ${guildId}:`,
-        error
-      );
-      return;
-    }
-
-    if (!targetChannelId) {
-      console.warn(
-        `[Gemini Moderator] Canal de ajuda não configurado para o servidor ${guildId}`
-      );
-      return;
-    }
-
-    if (!apiKey) {
-      console.error("[Gemini Moderator] AI_TOKEN não configurado no ambiente");
-      return;
-    }
-
-    const messageContent = message.content.trim();
-    const channelName = message.channel.name;
-
-    const shouldDelete = await checkMessageWithGemini(
-      apiKey,
-      prompt,
-      messageContent,
-      channelName,
-      model
-    );
-    if (shouldDelete === null) {
-      console.error(
-        `[Gemini Moderator] Erro ao verificar mensagem com Gemini API para o servidor ${guildId}`
-      );
-      return;
-    }
-
-    if (shouldDelete === true) {
-      try {
-        await message.delete();
-        console.log(
-          `[Gemini Moderator] Mensagem deletada no servidor ${guildId}, canal ${channelName}, autor ${message.author.id}`
+        message.client.logger.error(
+            "[Gemini Moderator] Erro não tratado no handler de mensagens:",
+            error
         );
-      } catch (error) {
-        console.error(
-          `[Gemini Moderator] Erro ao deletar mensagem no servidor ${guildId}:`,
-          error
-        );
-        return;
-      }
-
-      const finalMessage = replaceTargetChannel(
-        notificationMessage,
-        targetChannelId
-      );
-
-      await sendNotificationMessage(message, finalMessage, messageTimeout);
     }
-  } catch (error) {
-    console.error(
-      "[Gemini Moderator] Erro não tratado no handler de mensagens:",
-      error
-    );
-  }
+}
+
+/**
+ * Handler principal para processar atualizações de mensagens
+ * @param {Message} oldMessage - Mensagem antiga;
+ * @param {Message} newMessage - Mensagem recebida;
+ */
+async function onMessageUpdate(oldMessage, newMessage) {
+    newMessage.client.logger.info("[Gemini Moderator] Processando atualização de mensagem");
+    await this.onMessageCreate(newMessage);
 }
 
 module.exports = {
-  onMessageCreate,
+    onMessageCreate,
+    onMessageUpdate,
 };

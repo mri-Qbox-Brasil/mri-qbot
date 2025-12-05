@@ -1,7 +1,7 @@
 const { MessageFlags } = require("discord.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
 const { EmbedColors, createEmbed } = require("../../utils/embedUtils");
-const hasPermission = require("../../utils/permissionUtils");
+const { hasPermission } = require("../../utils/permissionUtils");
 
 const DEFAULT_MESSAGE =
   "Esta mensagem se trata de uma duvida referente a servidor de fivem QB/QBOX/MRI ou de ajuda em algum script , se sim solicite ajuda no canal {target_channel}, caso considera a mensagem um engano abra um ticket";

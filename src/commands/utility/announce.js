@@ -8,10 +8,12 @@ const {
     EmbedBuilder,
     MessageFlags,
 } = require('discord.js');
-const hasPermission = require('../../utils/permissionUtils');
-const { notifyError } = require('../../utils/errorHandler');
+const { sendReply } = require('../../utils/generalUtils');
 
 const DEFAULT_TIMEOUT_HOURS = parseInt(process.env.ANNOUNCE_TIMEOUT_HOURS || '24', 10);
+const MSG_TIMEOUT = 45;
+// evita envios duplicados por collectors + handlers globais
+const processingSends = new Set();
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -19,13 +21,13 @@ module.exports = {
         .setDescription('Cria um canal temporário para compor e enviar um anúncio.'),
 
     async execute(interaction) {
-        await interaction.deferReply().catch(() => {
-            sendReply({ interaction, content: 'Processando...' });
-        });
+        const cmdMessage = await interaction.deferReply({ fetchReply: true });
 
         try {
-            if (!await hasPermission(interaction, 'announce')) {
-                await sendReply({ interaction, content: 'Você não tem permissão para usar este comando.', ephemeral: true });
+            if (!await interaction.client.hasPermission(interaction, 'announce')) {
+                const futureTimestamp = Math.floor(Date.now() / 1000) + MSG_TIMEOUT;
+                cmdMessage.reply({ content: `Voce nao tem permissao para usar este comando.\nEsta mensagem será removida <t:${futureTimestamp}:R>.` });
+                setTimeout(() => cmdMessage.delete().catch(interaction.client.notifyError), MSG_TIMEOUT * 1000);
                 return;
             }
 
@@ -102,9 +104,9 @@ module.exports = {
             });
 
             await sendReply({ interaction, content: `Canal temporário criado: ${tempChannel}` });
-            const cmdMessageId = await interaction.client.channels.fetch(interaction.channel.id).then(channel => channel.lastMessageId);
+            const cmdMessageId = (await interaction.fetchReply()).id;
             interaction.client.logger.debug('Mensagem de resposta do comando capturada.', { messageId: cmdMessageId });
-            const commandMessageId = cmdMessageId || interaction.id;
+            const commandMessageId = cmdMessageId;
             const commandChannelId = interaction.channel.id;
 
             await AnnounceData.create({
@@ -206,86 +208,41 @@ module.exports = {
                 }
 
                 try {
-                    if (baseId === 'announceSelect_channel') {
-                        executeSelect(interaction, comp, cmdMessageId);
-                        return;
-                    }
+                        if (baseId === 'announceSelect_channel') {
+                            await executeSelect(interaction, comp, cmdMessageId);
+                            return;
+                        }
 
                     if (comp.isButton()) {
                         if (baseId === 'announceButton_cancel') {
                             finished = true;
                             // editar mensagem do comando se possível
-                            executeCancel(comp, channelId, cmdChannelId, cmdMessageId);
+                            await executeCancel(comp, channelId, cmdChannelId, cmdMessageId);
                             messageCollector.stop('cancelled');
                             componentCollector.stop('cancelled');
                             return;
                         }
 
                         if (baseId === 'announceButton_send') {
-                            if (!announceDataEntry.content) {
-                                await comp.reply({ content: 'Nenhum rascunho encontrado. Envie uma mensagem neste canal antes de enviar o anúncio.', flags: MessageFlags.Ephemeral });
-                                return;
-                            }
-
-                            const announceDataEntry = await AnnounceData.findOne({
-                                where: { id: announceId }
-                            });
-
-                            if (!announceDataEntry) {
-                                await comp.reply({ content: 'Entrada AnnounceData nao encontrada.', flags: MessageFlags.Ephemeral });
-                                return;
-                            }
-
-                            const selectedChannelId = announceDataEntry?.announceChannelId;
-
-                            if (!selectedChannelId) {
-                                await comp.reply({ content: 'Por favor, selecione um canal de destino antes de enviar.', flags: MessageFlags.Ephemeral });
-                                return;
-                            }
-
-                            const targetChannel = await interaction.client.channels.fetch(selectedChannelId).catch(() => null);
-                            if (!targetChannel || !targetChannel.isTextBased()) {
-                                await comp.reply({ content: 'Canal de destino inválido ou não é um canal de texto.', flags: MessageFlags.Ephemeral });
-                                return;
-                            }
-
-                            try {
-                                await targetChannel.send({ content: announceDataEntry.content });
-                            } catch (err) {
-                                notifyError({
-                                    client: interaction.client,
-                                    user: interaction.user,
-                                    channel: interaction.channel,
-                                    guild: interaction.guild,
-                                    context: `/${this.data.name} (sending announcement)`,
-                                    error: err
-                                });
-                                await comp.reply({ content: 'Falha ao enviar o anúncio para o canal selecionado.', flags: MessageFlags.Ephemeral });
-                                return;
-                            }
-
+                            // prevenir execução duplicada: await executeSend que fará edição/cleanup
+                            await executeSend(comp, channelId, cmdChannelId, cmdMessageId);
                             finished = true;
-                            // editar mensagem do comando para indicar sucesso
-                            if (cmdMessageId && interaction.channel) {
-                                const cmdMsg = await interaction.channel.messages.fetch(cmdMessageId).catch(() => null);
-                                if (cmdMsg && cmdMsg.editable) {
-                                    await cmdMsg.edit(`Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`).catch(() => null);
-                                }
+                            try {
+                                messageCollector.stop('sent');
+                                componentCollector.stop('sent');
+                            } catch (err) {
+                                interaction.client.logger.debug('Falha ao parar coletores após envio.', { error: err?.stack || err });
                             }
-                            await comp.reply({ content: `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`, flags: MessageFlags.Ephemeral });
-                            messageCollector.stop('sent');
-                            componentCollector.stop('sent');
-                            await cleanup(interaction, interaction.channel.id, 'sent');
                             return;
                         }
                     }
                 } catch (err) {
-                    notifyError({
+                    interaction.client.notifyError({
                         client: interaction.client,
                         user: interaction.user,
                         channel: interaction.channel,
                         guild: interaction.guild,
-                        context: `/${this.data.name} (collector)`,
+                        context: `/announce (collector)`,
                         error: err
                     });
                     try { await comp.reply({ content: 'Ocorreu um erro ao processar sua interação.', flags: MessageFlags.Ephemeral }); } catch (_) { }
@@ -310,12 +267,12 @@ module.exports = {
             });
 
         } catch (error) {
-            notifyError({
+            interaction.client.notifyError({
                 client: interaction.client,
                 user: interaction.user,
                 channel: interaction.channel,
                 guild: interaction.guild,
-                context: `/${this.data.name}`,
+                context: '/announce',
                 error
             });
             try {
@@ -325,7 +282,6 @@ module.exports = {
     },
 
     async onChannelDelete(channel, client) {
-        // Limpar entradas de canais excluídos
         client.logger.debug(`[announce onChannelDelete] Verificando exclusão do canal ${channel.id}`);
         const Announces = client.db?.Announces;
         const AnnounceData = client.db?.AnnounceData;
@@ -349,11 +305,122 @@ module.exports = {
         client.logger.debug(`[announce onChannelDelete] Canal de anúncio temporário excluído: ${channel.id}, removendo do banco de dados.`);
     },
 
+    async onMessageCreate(message) {
+        if (message.author.bot) {
+            message.client.logger.debug('[announce onMessageCreate] mensagem do bot ignorada.');
+            return;
+        }
+
+        const AnnounceData = message.client.db?.AnnounceData;
+
+        if (!AnnounceData) {
+            message.client.logger.warn('[announce onMessageCreate] modelo AnnounceData não encontrado no banco de dados.');
+            return;
+        }
+
+        const announceDataEntry = await AnnounceData.findOne({
+            where: { channelId: message.channel.id }
+        });
+
+        if (!announceDataEntry) {
+            message.client.logger.debug('[announce onMessageCreate] nenhum dado de anúncio encontrado para este canal.');
+            return;
+        }
+
+        await AnnounceData.update({
+            content: message.content
+        }, {
+            where: { id: announceDataEntry.id }
+        });
+    },
+
+    async onMessageUpdate(oldMessage, newMessage) {
+        try {
+            // Garantir que temos objetos completos (não parciais). Se forem parciais, buscar do API.
+            if (newMessage?.partial) {
+                newMessage = await newMessage.fetch().catch((err) => {
+                    newMessage.client?.logger?.debug('[announce onMessageUpdate] não foi possível buscar newMessage parcial, abortando.');
+                    return;
+                });
+            }
+            if (oldMessage?.partial) {
+                oldMessage = await oldMessage.fetch().catch((err) => {
+                    newMessage.client?.logger?.debug('[announce onMessageUpdate] não foi possível buscar oldMessage parcial, abortando.');
+                    return;
+                });
+            }
+
+            if (!newMessage || !oldMessage) {
+                newMessage.client?.logger?.debug('[announce onMessageUpdate] mensagens inválidas, ignorando.');
+                return;
+            }
+
+            if (newMessage.author?.bot) {
+                newMessage.client.logger.debug('[announce onMessageUpdate] mensagem do bot ignorada.');
+                return;
+            }
+
+            // Se o conteúdo não mudou, nada a fazer
+            if (newMessage.content === oldMessage.content) {
+                newMessage.client.logger.debug('[announce onMessageUpdate] conteúdo da mensagem não alterado, ignorando.');
+                return;
+            }
+
+            let lastMsg = null;
+            try {
+                const fetched = await newMessage.channel.messages.fetch({ limit: 1 });
+                lastMsg = fetched?.first() || null;
+            } catch (err) {
+                newMessage.client.logger.debug('[announce onMessageUpdate] falha ao buscar última mensagem do canal, prosseguindo sem checagem de último.');
+            }
+
+            if (lastMsg && oldMessage.id !== lastMsg.id) {
+                newMessage.client.logger.debug('[announce onMessageUpdate] mensagem não é a última no canal, ignorando.');
+                return;
+            }
+
+            const AnnounceData = newMessage.client.db?.AnnounceData;
+
+            if (!AnnounceData) {
+                newMessage.client.logger.warn('[announce onMessageUpdate] modelo AnnounceData não encontrado no banco de dados.');
+                return;
+            }
+
+            const announceDataEntry = await AnnounceData.findOne({
+                where: { channelId: newMessage.channel.id }
+            });
+
+            if (!announceDataEntry) {
+                newMessage.client.logger.debug('[announce onMessageUpdate] nenhum dado de anúncio encontrado para este canal.');
+                return;
+            }
+
+            newMessage.client.logger.debug(`[announce onMessageUpdate] atualizando rascunho de anúncio com nova mensagem editada: ${newMessage.content}`);
+            await AnnounceData.update({
+                content: newMessage.content
+            }, {
+                where: { id: announceDataEntry.id }
+            });
+        } catch (err) {
+            newMessage.client.notifyError({
+                client: newMessage.client,
+                user: newMessage.author,
+                channel: newMessage.channel,
+                guild: newMessage.guild,
+                context: '/announce (onMessageUpdate)',
+                error: err
+            });
+        }
+    },
+
     async buttonClick(interaction) {
         interaction.client.logger.debug(`[announce buttonClick] clique de botão para ${interaction.customId}`);
         const parts = (interaction.customId || '').split(':'); // e.g. ['announce_send','<announce.id>']
+        interaction.client.logger.debug(`[announce buttonClick] parts: ${parts}`);
         const baseId = parts[0];
+        interaction.client.logger.debug(`[announce buttonClick] baseId: ${baseId}`);
         const announceId = parts[1];
+        interaction.client.logger.debug(`[announce buttonClick] announceId: ${announceId}`);
 
         const announceDataEntry = await interaction.client.db?.AnnounceData.findOne({
             where: { id: announceId }
@@ -385,9 +452,11 @@ module.exports = {
             interaction.client.logger.debug(`[announce buttonClick] Botão para ${action} pressionado.`);
 
             if (action === 'send') {
-                await executeSend(interaction, channelId);
+                interaction.client.logger.debug('[announce buttonClick] executando envio de anúncio.');
+                await executeSend(interaction, channelId, cmdChannelId, cmdMessageId);
                 return;
             } else if (action === 'cancel') {
+                interaction.client.logger.debug('[announce buttonClick] executando cancelamento de anúncio.');
                 await executeCancel(interaction, channelId, cmdChannelId, cmdMessageId);
                 return;
             }
@@ -397,8 +466,11 @@ module.exports = {
     async selectMenu(interaction) {
         interaction.client.logger.debug(`[announce selectMenu] seleção de menu para ${interaction.customId}`);
         const parts = (interaction.customId || '').split(':'); // e.g. ['announce_send','<announce.id>']
+        interaction.client.logger.debug(`[announce selectMenu] parts: ${parts}`);
         const baseId = parts[0];
+        interaction.client.logger.debug(`[announce selectMenu] baseId: ${baseId}`);
         const announceId = parts[1];
+        interaction.client.logger.debug(`[announce selectMenu] announceId: ${announceId}`);
 
         const announceDataEntry = await interaction.client.db?.AnnounceData.findOne({
             where: { id: announceId }
@@ -411,8 +483,6 @@ module.exports = {
 
         const channelId = announceDataEntry.channelId;
         const ownerId = announceDataEntry.ownerId;
-        const cmdChannelId = announceDataEntry.cmdChannelId;
-        const cmdMessageId = announceDataEntry.cmdMessageId;
 
         if (!baseId.includes('announce')) {
             interaction.client.logger.warn(`[announce selectMenu] baseId desconhecido: ${baseId}`);
@@ -424,7 +494,7 @@ module.exports = {
             return;
         }
 
-        const match = interaction.customId.match(/^Select_([a-z0-9_-]+)/i);
+        const match = interaction.customId.match(/^announceSelect_([a-z0-9_-]+)/i);
         if (match) {
             const action = match[1];
             if (action === 'channel') {
@@ -437,18 +507,27 @@ module.exports = {
 async function executeSelect(interaction, comp, msgId) {
     interaction.client.logger.debug('Canal selecionado para anúncio.', { channelId: comp.values[0], userId: comp.user.id });
 
-    const parts = (interaction.customId || '').split(':'); // e.g. ['announce_send','<announce.id>']
-    const baseId = parts[0];
-    const announceId = parts[1];
+    // responder rápido para evitar timeout de interação (3s)
+    let didDefer = false;
+    try {
+        if (!comp.deferred && !comp.replied) {
+            await comp.deferReply({ ephemeral: true }).catch(() => {});
+            didDefer = true;
+        }
+    } catch (_) { /* ignore */ }
 
-    const announceDataEntry = await interaction.client.db?.AnnounceData.findOne({
-        where: { id: announceId }
-    });
+    // parse announceId from the component interaction
+    const announceDataEntry = await getAnnounceData(comp);
 
     if (!announceDataEntry) {
-        interaction.client.logger.warn(`[announce selectMenu] entrada AnnounceData não encontrada para id ${announceId}`);
+        try {
+            if (didDefer) await comp.editReply({ content: 'Erro: dado de anúncio não encontrado.' });
+            else await comp.reply({ content: 'Erro: dado de anúncio não encontrado.', flags: MessageFlags.Ephemeral });
+        } catch (_) { }
         return;
     }
+
+    interaction.client.logger.debug('Atualizando canal de anúncio selecionado.', { channelId: comp.values[0], announceDataId: announceDataEntry.id });
 
     announceDataEntry.announceChannelId = comp.values[0];
     await announceDataEntry.save();
@@ -458,53 +537,153 @@ async function executeSelect(interaction, comp, msgId) {
             await cmdMsg.edit(`Canal selecionado: <#${announceDataEntry.announceChannelId}>`).catch(() => null);
         }
     }
-    await comp.reply({ content: `Canal selecionado: <#${announceDataEntry.announceChannelId}>`, flags: MessageFlags.Ephemeral });
+
+    try {
+        if (didDefer) {
+            await comp.editReply({ content: `Canal selecionado: <#${announceDataEntry.announceChannelId}>` }).catch(() => {});
+        } else {
+            await comp.reply({ content: `Canal selecionado: <#${announceDataEntry.announceChannelId}>`, flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+    } catch (err) {
+        interaction.client.logger.debug('[announce executeSelect] falha ao responder interação do select', { error: err?.stack || err });
+    }
 }
 
-async function executeSend(interaction, channelId) {
-    // implementação movida para o coletor principal em execute()
+async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
+
+    const announceDataEntry = await getAnnounceData(interaction);
+
+    if (!announceDataEntry) return;
+
+    // evitar envios duplicados (collector + handler global)
+    if (processingSends.has(announceDataEntry.id)) {
+        try { await interaction.reply({ content: 'Anúncio já está sendo processado...', flags: MessageFlags.Ephemeral }); } catch(_) {}
+        return;
+    }
+    processingSends.add(announceDataEntry.id);
+
+    if (!announceDataEntry.content) {
+        await interaction.reply({ content: 'Nenhum rascunho encontrado. Envie uma mensagem neste canal antes de enviar o anúncio.', flags: MessageFlags.Ephemeral });
+        processingSends.delete(announceDataEntry.id);
+        return;
+    }
+
+    const selectedChannelId = announceDataEntry?.announceChannelId;
+
+    if (!selectedChannelId) {
+        await interaction.reply({ content: 'Por favor, selecione um canal de destino antes de enviar.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    const targetChannel = await interaction.client.channels.fetch(selectedChannelId).catch(() => null);
+    if (!targetChannel || !targetChannel.isTextBased()) {
+        await interaction.reply({ content: 'Canal de destino inválido ou não é um canal de texto.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    try {
+        await targetChannel.send({ content: announceDataEntry.content });
+        // editar mensagem do comando e confirmar para o usuário
+        await deferReply(interaction, cmdChannelId, cmdMessageId, `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`);
+        try { await interaction.reply({ content: `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`, flags: MessageFlags.Ephemeral }); } catch (_) { /* ignore if already replied/updated */ }
+        await cleanup(interaction, channelId, 'sent');
+        processingSends.delete(announceDataEntry.id);
+    } catch (err) {
+        interaction.client.notifyError({
+            client: interaction.client,
+            user: interaction.user,
+            channel: interaction.channel,
+            guild: interaction.guild,
+            context: '/announce (sending announcement)',
+            error: err
+        });
+        try { await interaction.reply({ content: 'Falha ao enviar o anúncio para o canal selecionado.', flags: MessageFlags.Ephemeral }); } catch(_) {}
+        processingSends.delete(announceDataEntry.id);
+        return;
+    }
 }
 
 async function executeCancel(interaction, channelId, cmdChannelId, cmdMessageId) {
-    interaction.client.channels.fetch(cmdChannelId).then(cmdChannel => {
-        if (cmdChannel) {
-            cmdChannel.messages.fetch(cmdMessageId).then(cmdMessage => {
-                if (cmdMessage) {
-                    cmdMessage.edit('Anúncio cancelado. Canal temporário será removido.').catch(() => null);
-                }
-            }).catch(() => null);
-        }
-    });
+    await deferReply(interaction, cmdChannelId, cmdMessageId, 'Anúncio cancelado pelo usuário. Limpando canal temporário...');
     await cleanup(interaction, channelId, 'cancelled by user');
 }
 
-async function sendReply({ interaction, content, ephemeral = false }) {
-    await interaction.editReply({ content, flags: ephemeral ? MessageFlags.Ephemeral : undefined }).catch(async (error) => {
-        interaction.client.logger.error(`[announce editReply] falha ao responder/editReply, tentando fallback`, { interactionId: interaction.id, error: error?.message });
-        await interaction.reply({ content, flags: ephemeral ? MessageFlags.Ephemeral : undefined }).catch(async (error) => {
-            interaction.client.logger.error(`[announce reply] falha ao responder via reply`, { interactionId: interaction.id, error: error?.message });
-            await interaction.followUp({ content, flags: ephemeral ? MessageFlags.Ephemeral : undefined }).catch((error) => {
-                interaction.client.logger.error(`[announce followUp] falha ao responder via followUp`, { interactionId: interaction.id, error: error?.message });
-                notifyError({
-                    client: interaction.client,
-                    user: interaction.user,
-                    channel: interaction.channel,
-                    guild: interaction.guild,
-                    context: `/${this.data?.name}`,
-                    error
-                });
+async function deferReply(interaction, cmdChannelId, cmdMessageId, content) {
+    interaction.client.logger.debug('[announce deferReply] tentando editar mensagem do comando.', { cmdChannelId, cmdMessageId, content });
+    interaction.client.channels.fetch(cmdChannelId).then(cmdChannel => {
+        interaction.client.logger.debug('[announce deferReply] canal do comando buscado.', { cmdChannelId });
+        if (cmdChannel) {
+            interaction.client.logger.debug('[announce deferReply] tentando editar mensagem do comando.', { cmdChannelId, cmdMessageId, content });
+            cmdChannel.messages.fetch(cmdMessageId).then(cmdMessage => {
+                interaction.client.logger.debug('[announce deferReply] mensagem do comando buscada.', { cmdMessageId });
+                if (cmdMessage) {
+                    interaction.client.logger.debug('[announce deferReply] editando mensagem do comando.', { cmdMessageId, content });
+                    cmdMessage.edit(content).catch((err) => {
+                        interaction.client.logger.debug('[announce deferReply] falha ao editar mensagem do comando.', { cmdMessageId, error: err?.stack || err });
+                    });
+                }
+            }).catch((err) => {
+                interaction.client.logger.debug('[announce deferReply] falha ao buscar mensagem do comando.', { cmdMessageId, error: err?.stack || err });
             });
-        });
+        }
     });
+}
+
+async function getAnnounceData(interaction) {
+    const parts = (interaction.customId || '').split(':'); // e.g. ['announce_send','<announce.id>']
+    const baseId = parts[0];
+    const announceId = parts[1];
+
+    if (!baseId.includes('announce')) {
+        interaction.client.logger.warn(`[announce getAnnounceData] baseId desconhecido: ${baseId}`);
+        return;
+    }
+
+    if (announceId == null) {
+        interaction.client.logger.warn(`[announce getAnnounceData] announceId: ${announceId} não encontrado no customId: ${interaction.customId}.`);
+        return;
+    }
+
+    const announceDataEntry = await interaction.client.db?.AnnounceData.findOne({
+        where: { id: announceId }
+    });
+
+    if (!announceDataEntry) {
+        interaction.client.logger.warn(`[announce getAnnounceData] entrada AnnounceData não encontrada para id ${announceId}`);
+        return;
+    }
+
+    return announceDataEntry;
 }
 
 async function cleanup(interaction, channelId, reason) {
     interaction.client.logger.debug(`[announce cleanup] limpando canal ${channelId} após ${reason}`);
     try {
-        const tempChannel = await interaction.client.channels.fetch(channelId).catch(() => null);
-        if (tempChannel && tempChannel.deletable) {
-            await tempChannel.delete(`Anúncio finalizado/limpeza: ${reason}`);
+        const client = interaction.client;
+        const tempChannel = await client.channels.fetch(channelId).catch(() => null);
+        if (tempChannel) {
+            try {
+                if (tempChannel.deletable) {
+                    await tempChannel.delete(`Anúncio finalizado/limpeza: ${reason}`);
+                } else {
+                    client.logger.debug(`[announce cleanup] canal ${channelId} não deletável pelo bot.`);
+                }
+            } catch (err) {
+                client.logger.debug('[announce cleanup] falha ao deletar canal temporário.', { channelId, error: err?.stack || err });
+            }
         }
-        await Announces.destroy({ where: { channelName: safeName, guildId: interaction.guild.id } });
-    } catch (_) { /* ignore */ }
+
+        const Announces = client.db?.Announces;
+        const AnnounceData = client.db?.AnnounceData;
+        if (AnnounceData) {
+            await AnnounceData.destroy({ where: { channelId } }).catch(() => {});
+        }
+        if (Announces) {
+            await Announces.destroy({ where: { channelId } }).catch(() => {});
+        }
+
+        client.logger.info(`[announce cleanup] limpeza finalizada para canal ${channelId} (motivo: ${reason}).`);
+    } catch (err) {
+        try { interaction.client.logger.error('[announce cleanup] erro durante cleanup', { stack: err?.stack || err }); } catch(_) {}
+    }
 };

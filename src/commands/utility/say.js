@@ -1,8 +1,7 @@
 const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
-const hasPermission = require('../../utils/permissionUtils');
-const { notifyError } = require('../../utils/errorHandler');
+const { hasPermission } = require('../../utils/permissionUtils');
 
 async function createSayEmbed({description, color, fields}) {
     return createEmbed({
@@ -53,14 +52,19 @@ module.exports = {
             return interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
-            notifyError({
-                client: interaction.client,
-                user: interaction.user,
-                channel: interaction.channel,
-                guild: interaction.guild,
-                context: `/${this.data.name}`,
-                error
-            });
+            // use client.notifyError for consistency
+            try {
+                interaction.client.notifyError({
+                    client: interaction.client,
+                    user: interaction.user,
+                    channel: interaction.channel,
+                    guild: interaction.guild,
+                    context: `/${this.data.name}`,
+                    error
+                });
+            } catch (_) {
+                interaction.client.logger?.error('Falha ao notificar erro do comando /say', { stack: _?.stack || _ });
+            }
 
             const embed = await createSayEmbed({
                 description: 'Ocorreu um erro ao executar o comando.',

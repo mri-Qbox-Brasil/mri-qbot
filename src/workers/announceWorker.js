@@ -1,6 +1,5 @@
 const cron = require('node-cron');
 const { Op } = require('sequelize');
-const { notifyError } = require('../utils/errorHandler');
 
 function checkChannels(client) {
     const now = new Date();
@@ -19,7 +18,7 @@ function checkChannels(client) {
                     await channel.delete('Anúncio expirado.');
                 }
             } catch (error) {
-                notifyError({
+                client.notifyError({
                     client,
                     context: 'announceWorker (deleting expired channel)',
                     error

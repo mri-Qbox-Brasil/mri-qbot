@@ -1,7 +1,7 @@
 const { MessageFlags } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
-const hasPermission = require('../../utils/permissionUtils');
+const { hasPermission } = require('../../utils/permissionUtils');
 
 async function getBlockerConfig(client, guildId) {
     const Config = client.db.Configuration;

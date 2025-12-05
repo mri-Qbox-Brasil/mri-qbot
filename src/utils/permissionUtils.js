@@ -23,4 +23,6 @@ async function hasPermission(interaction, commandName = 'apoiador') {
     }
 }
 
-module.exports = hasPermission
+module.exports = {
+    hasPermission
+};

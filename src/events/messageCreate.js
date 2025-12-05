@@ -1,11 +1,14 @@
+const { Events } = require('discord.js');
 const inviteBlocker = require('../commands/blockers/inviteblocker');
-const geminiModerator = require('../commands/blockers/geminiModerator');
+const geminiModerator = require('../workers/geminiModerator.js');
+const announce = require('../commands/utility/announce.js');
 
 module.exports = {
-    name: 'messageCreate',
-    once: false,
-    async execute(message) {
-        await inviteBlocker.onMessageCreate(message);
-        await geminiModerator.onMessageCreate(message);
+    name: Events.MessageCreate,
+    execute(message, client) {
+        client.logger.debug('[messageCreate] Nova mensagem recebida');
+        inviteBlocker.onMessageCreate(message);
+        geminiModerator.onMessageCreate(message);
+        announce.onMessageCreate(message);
     },
 };

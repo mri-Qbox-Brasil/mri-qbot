@@ -1,6 +1,6 @@
 const { EmbedColors, createEmbed } = require('../utils/embedUtils');
-const { MessageFlags } = require('discord.js');
-const { notifyError } = require('../utils/errorHandler');
+const { Events, MessageFlags } = require('discord.js');
+// usar `client.notifyError` (atribuído no boot) — não importar diretamente
 
 // helper: logging que usa client.logger quando disponível
 function logWithClient(client, level, message, meta) {
@@ -65,7 +65,7 @@ async function safeReply(interaction, { content, embeds, ephemeral = false } = {
 }
 
 module.exports = {
-	name: 'interactionCreate',
+	name: Events.InteractionCreate,
 	async execute(interaction, client) {
 		try {
 			// Log básico de entrada
@@ -109,7 +109,7 @@ module.exports = {
 			}
 
 			// Slash commands
-			if (interaction.isCommand()) {
+			if (interaction.isCommand && interaction.isCommand()) {
 				logWithClient(client, 'debug', 'Interação é Slash Command', { commandName: interaction.commandName, interactionId: interaction.id });
 				const command = client.commands.get(interaction.commandName);
 				if (!command) {
@@ -122,7 +122,7 @@ module.exports = {
 			}
 
 			// Autocomplete
-			if (interaction.isAutocomplete()) {
+			if (interaction.isAutocomplete && interaction.isAutocomplete()) {
 				logWithClient(client, 'debug', 'Interação é Autocomplete', { commandName: interaction.commandName, interactionId: interaction.id });
 				const cmd = client.commands.get(interaction.commandName);
 				if (!cmd || typeof cmd.autocomplete !== 'function') {
@@ -135,7 +135,7 @@ module.exports = {
 			}
 
             // Botão
-            if (interaction.isButton()) {
+            if (interaction.isButton && interaction.isButton()) {
                 const customId = interaction.customId || '';
                 logWithClient(client, 'debug', 'Interação é Button', { customId, interactionId: interaction.id });
                 // tenta extrair o comando do customId
@@ -160,11 +160,11 @@ module.exports = {
             }
 
             // Select Menu
-            if (interaction.isSelectMenu()) {
+            if (interaction.isChannelSelectMenu && interaction.isChannelSelectMenu()) {
                 const customId = interaction.customId || '';
-                logWithClient(client, 'debug', 'Interação é SelectMenu', { customId, interactionId: interaction.id });
+                logWithClient(client, 'debug', 'Interação é ChannelSelectMenu', { customId, interactionId: interaction.id });
                 // tenta extrair o comando do customId
-                const match = customId.match(/^([a-z0-9_-]+)SelectMenu_/i);
+                const match = customId.match(/^([a-z0-9_-]+)Select_/i);
                 if (match) {
                     const commandName = match[1];
                     const command = client.commands.get(commandName);
@@ -185,14 +185,24 @@ module.exports = {
             }
 
 			// Other message components (buttons/selects) are ignored here.
-			logWithClient(client, 'debug', 'Interação não tratada neste handler (botão/select/outro)', { interactionId: interaction.id });
+			logWithClient(client, 'debug', 'Interação não tratada neste handler', { interactionId: interaction.id });
 			// NOTE: announce-related component handling was moved out; implement it inside the announce command module.
 			return;
 
 		} catch (error) {
 			// log error via logger antes de notificar
 			logWithClient(client, 'error', 'Erro no interactionCreate (global handler)', { error: error?.stack ?? error?.message });
-			notifyError({ client: interaction.client, user: interaction.user, channel: interaction.channel, guild: interaction.guild, context: 'interactionCreate (global handler)', error });
+			// se safeAsync já notificou, evita notificação duplicada
+			if (error && error._notifiedBySafeAsync) {
+				return;
+			}
+			// usar client.notifyError para manter padrão
+			try {
+				interaction.client.notifyError({ client: interaction.client, user: interaction.user, channel: interaction.channel, guild: interaction.guild, context: 'interactionCreate (global handler)', error });
+			} catch (_) {
+				// fallback mínimo, não bloquear
+				logWithClient(client, 'error', 'Falha ao notificar erro via client.notifyError', { error: _?.stack ?? _?.message });
+			}
 			// não bloquear outras interações
 		}
 	},

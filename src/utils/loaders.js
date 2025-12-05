@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const { safeAsync } = require('./safeAsync');
+
 async function loadCommands(client, commandsPath = './src/commands') {
     client.logger.info('Iniciando carregamento de comandos...');
     const commands = [];
@@ -20,6 +22,17 @@ async function loadCommands(client, commandsPath = './src/commands') {
                     if (!command?.data?.name) {
                         client.logger.warn(`[AVISO] O comando em "${filePath}" não possui um nome definido.`);
                         continue;
+                    }
+
+                    // envolver handlers do comando com safeAsync para padronizar erro/notify
+                    try {
+                        const ctxProvider = () => `/${command.data?.name}`;
+                        if (typeof command.execute === 'function') command.execute = safeAsync(command.execute, ctxProvider);
+                        if (typeof command.autocomplete === 'function') command.autocomplete = safeAsync(command.autocomplete, ctxProvider);
+                        if (typeof command.buttonClick === 'function') command.buttonClick = safeAsync(command.buttonClick, ctxProvider);
+                        if (typeof command.selectMenu === 'function') command.selectMenu = safeAsync(command.selectMenu, ctxProvider);
+                    } catch (wrapErr) {
+                        client.logger.warn(`Falha ao envolver handlers do comando ${filePath}:`, { stack: wrapErr?.stack || wrapErr });
                     }
 
                     client.commands.set(command.data.name, command);
@@ -51,9 +64,28 @@ async function loadEvents(client, eventsPath = './src/events') {
             }
 
             if (event.once) {
-                client.once(event.name, (...args) => event.execute(...args, client));
+                client.once(event.name, async (...args) => {
+                    try {
+                        await event.execute(...args, client);
+                    } catch (err) {
+                        client.logger.error(`Erro no evento ${event.name}`, { stack: err?.stack || err });
+                        // tenta extrair source do primeiro argumento (ex: Message/Interaction)
+                        const source = args && args.length > 0 ? args[0] : undefined;
+                        client.notifyError({ client, error: err, context: `event:${event.name}`, source });
+                    }
+                });
+                client.logger.debug(`Evento registrado como once: ${event.name}`);
             } else {
-                client.on(event.name, (...args) => event.execute(...args, client));
+                client.on(event.name, async (...args) => {
+                    try {
+                        await event.execute(...args, client);
+                    } catch (err) {
+                        client.logger.error(`Erro no evento ${event.name}`, { stack: err?.stack || err });
+                        const source = args && args.length > 0 ? args[0] : undefined;
+                        client.notifyError({ client, error: err, context: `event:${event.name}`, source });
+                    }
+                });
+                client.logger.debug(`Evento registrado: ${event.name}`);
             }
 
             loadedCount++;

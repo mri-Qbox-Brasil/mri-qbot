@@ -1,7 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { EmbedColors, createEmbed } = require('../../utils/embedUtils');
 const { fetchArtifactLinks } = require('../../utils/artifactUtils');
-const { notifyError } = require('../../utils/errorHandler');
 
 const BASE_URL = 'https://artifacts.jgscripts.com';
 
@@ -67,14 +66,18 @@ module.exports = {
             });
 
         } catch (error) {
-            notifyError({
-                client: interaction.client,
-                user: interaction.user,
-                channel: interaction.channel,
-                guild: interaction.guild,
-                context: `/${this.data.name}`,
-                error
-            });
+            try {
+                interaction.client.notifyError({
+                    client: interaction.client,
+                    user: interaction.user,
+                    channel: interaction.channel,
+                    guild: interaction.guild,
+                    context: `/${this.data.name}`,
+                    error
+                });
+            } catch (_) {
+                interaction.client.logger?.error('Falha ao notificar erro do comando /download', { stack: _?.stack || _ });
+            }
 
             const embed = await createDownloadEmbed({
                 description: 'Ocorreu um erro ao executar o comando.',

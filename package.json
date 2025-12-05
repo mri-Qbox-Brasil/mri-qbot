@@ -5,12 +5,16 @@
     "main": "src/bot.js",
     "scripts": {
         "dev": "nodemon src/bot.js",
-        "start": "node src/bot.js"
+        "start": "node src/bot.js",
+        "postinstall": "pnpm rebuild sqlite3 || echo 'Rebuild falhou, tente rodar pnpm rebuild sqlite3 manualmente'"
     },
     "dependencies": {
+        "@discordjs/builders": "^1.13.0",
+        "@discordjs/rest": "^2.6.0",
         "axios": "^1.13.2",
         "cheerio": "^1.1.2",
-        "discord.js": "^14.25.1",
+        "discord-api-types": "^0.38.33",
+        "discord.js": "^14.24.2",
         "dotenv": "^17.2.3",
         "moment": "^2.30.1",
         "mri-qbot": "file:",
@@ -20,7 +24,8 @@
         "umzug": "^3.8.2"
     },
     "devDependencies": {
-        "nodemon": "^3.1.11",
+        "nodemon": "^3.1.10",
+        "sqlite": "^5.1.1",
         "sqlite3": "^5.1.7"
     }
 }
