@@ -41,7 +41,6 @@ async function updateInviteBlockerSettings(client, guildId, updates) {
 const inviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)[\w-]+(?:\/?\S*)?/i;
 const MSG_TIMEOUT = 10;
 
-// Cria embed padrão
 function createInviteBlockerEmbed(description, color, fields = []) {
     return createEmbed({
         title: 'Bloqueador de Convites',
@@ -51,7 +50,6 @@ function createInviteBlockerEmbed(description, color, fields = []) {
     });
 }
 
-// Subcomando: Permitir convites
 async function handleAllow(interaction, channel) {
     await updateInviteBlockerSettings(interaction.client, interaction.guild.id, { allowedChannels: [...new Set([...await getAllowedChannels(interaction.client, interaction.guild.id), channel.id])] });
     return createInviteBlockerEmbed(
@@ -60,7 +58,6 @@ async function handleAllow(interaction, channel) {
     );
 }
 
-// Subcomando: Bloquear convites
 async function handleProhibit(interaction, channel) {
     await updateInviteBlockerSettings(interaction.client, interaction.guild.id, { allowedChannels: (await getAllowedChannels(interaction.client, interaction.guild.id)).filter(id => id !== channel.id) });
     return createInviteBlockerEmbed(
@@ -69,7 +66,6 @@ async function handleProhibit(interaction, channel) {
     );
 }
 
-// Subcomando: Listar canais permitidos
 async function handleStatus(interaction) {
     const isEnabled = await isInviteBlockerEnabled(interaction.client, interaction.guild.id);
     if (!isEnabled) {
@@ -89,7 +85,6 @@ async function handleStatus(interaction) {
     );
 }
 
-// Subcomando: Habilitar/desabilitar bloqueador de convites
 async function handleEnable(interaction) {
     const isEnabled = interaction.options.getBoolean('habilitar');
     await updateInviteBlockerSettings(interaction.client, interaction.guild.id, { enabled: isEnabled });
@@ -99,7 +94,6 @@ async function handleEnable(interaction) {
     );
 }
 
-// Comando principal
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('inviteblocker')

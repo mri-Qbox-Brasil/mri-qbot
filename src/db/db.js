@@ -5,14 +5,12 @@ const { Umzug, SequelizeStorage } = require('umzug');
 const path = require('path');
 const fs = require('fs');
 
-// Verificação inicial do dialeto
 if (!process.env.DB_DIALECT) {
 	logger.error('A variável de ambiente DB_DIALECT não está definida.');
 	process.exit(1);
 }
 const dialect = process.env.DB_DIALECT;
 
-// Monta a lista de variáveis obrigatórias dependendo do dialeto
 const requiredEnvVars = ['DB_DIALECT'];
 if (dialect === 'sqlite') {
 	requiredEnvVars.push('DB_STORAGE'); // caminho do arquivo sqlite
@@ -20,7 +18,6 @@ if (dialect === 'sqlite') {
 	requiredEnvVars.push('DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_PORT');
 }
 
-// Valida todas as variáveis obrigatórias de uma vez
 requiredEnvVars.forEach((varName) => {
 	if (!process.env[varName]) {
 		logger.error(`A variável de ambiente ${varName} não está definida.`);
@@ -28,10 +25,8 @@ requiredEnvVars.forEach((varName) => {
 	}
 });
 
-// Configuração base
 const baseOptions = {
 	dialect,
-	// envia logs do sequelize para o logger.debug quando DEBUG_MODE=true
 	logging: process.env.DEBUG_MODE === 'true' ? (msg) => logger.debug(msg) : false,
 	pool: {
 		max: 5,
@@ -43,9 +38,7 @@ const baseOptions = {
 
 let sequelize;
 
-// Configurações específicas para SQLite
 if (dialect === 'sqlite') {
-	// Cria instância Sequelize para sqlite usando a forma de options
 	sequelize = new Sequelize({
 		dialect: 'sqlite',
 		storage: process.env.DB_STORAGE,
@@ -53,7 +46,6 @@ if (dialect === 'sqlite') {
 		pool: baseOptions.pool,
 	});
 } else {
-	// Usa a assinatura (database, username, password, options) para outros dialetos
 	sequelize = new Sequelize(
 		process.env.DB_NAME,
 		process.env.DB_USER,
@@ -68,7 +60,6 @@ if (dialect === 'sqlite') {
 	);
 }
 
-// Adiciona função para inicializar/autenticar e opcionalmente sincronizar o banco
 async function initDatabase({ alter = (process.env.DB_SYNC_ALTER === 'true'), force = (process.env.DB_SYNC_FORCE === 'true') } = {}) {
 	try {
 		await sequelize.authenticate();
@@ -87,14 +78,11 @@ async function initDatabase({ alter = (process.env.DB_SYNC_ALTER === 'true'), fo
 	}
 }
 
-// Adiciona função para executar migrations via Umzug
 async function runMigrations() {
 	try {
-		// tenta localizar a pasta de migrations em local relativo a este arquivo
 		const migrationsDir = path.join(__dirname, 'migrations');
 		const globPattern = path.join(migrationsDir, '*.js').replace(/\\/g, '/'); // garante barras normais (compatibilidade com fast-glob no Windows)
 
-		// Verifica se a pasta existe e lista arquivos .js para diagnóstico
 		let migrationFiles = [];
 		try {
 			migrationFiles = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.js'));
@@ -113,11 +101,10 @@ async function runMigrations() {
 		const umzug = new Umzug({
 			migrations: {
 				glob: globPattern,
-				// resolve garante compatibilidade com diferentes formas de export (default ou named)
 				resolve: ({ name, path: migrationPath, context }) => {
 					const migrationModule = require(migrationPath);
 					const migration = migrationModule && migrationModule.default ? migrationModule.default : migrationModule;
-					const queryInterface = context; // será sequelize.getQueryInterface()
+					const queryInterface = context;
 
 					const up = migration.up
 						? async () => migration.up(queryInterface, Sequelize)
@@ -144,14 +131,14 @@ async function runMigrations() {
 			return;
 		}
 
-		logger.info(`Aplicando ${pending.length} migration(s)...`);
-		await umzug.up();
-		logger.info('Migrations aplicadas com sucesso.');
+		logger.info(`Aplicando ${pending.length} migration(s)...`, { pending: pending.map(p=>p.name) });
+		const applied = await umzug.up();
+		const appliedNames = Array.isArray(applied) ? applied.map(a => a.name || a) : [];
+		logger.info('Migrations aplicadas com sucesso.', { applied: appliedNames });
 	} catch (err) {
 		logger.error('Erro ao executar migrations:', err);
 		throw err;
 	}
 }
 
-// Exporta runMigrations junto com a instância do Sequelize
 module.exports = {sequelize, runMigrations, initDatabase};

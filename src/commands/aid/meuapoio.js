@@ -22,7 +22,6 @@ module.exports = {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         try {
-            // Verifica permissões
             if (!await hasPermission(interaction, 'meuapoio')) {
                 const embed = await createSupportEmbed({
                     description: 'Você não tem permissão para usar este comando.',
@@ -35,12 +34,10 @@ module.exports = {
             const guildName = interaction.guild.name;
             const Supporters = interaction.client.db?.Supporters;
 
-            // Busca o registro de apoio do usuário
             const supporterData = await Supporters.findOne({
                 where: { userId: user.id, guildId: interaction.guild.id, active: true }
             });
 
-            // Caso não tenha apoio registrado
             if (!supporterData) {
                 const embed = await createSupportEmbed({
                     description: 'Você não possui um apoio registrado no momento.',
@@ -49,7 +46,6 @@ module.exports = {
                 return interaction.editReply({ embeds: [embed] });
             }
 
-            // Busca os detalhes do cargo e do responsável pelo apoio
             const role = supporterData.roleId
                 ? await interaction.guild.roles.fetch(supporterData.roleId).catch(() => null)
                 : null;
@@ -60,13 +56,11 @@ module.exports = {
                 ? moment(supporterData.expirationDate).format('DD/MM/YYYY')
                 : 'Sem prazo definido';
 
-            // Criação dos campos para o embed
             const fields = [
                 { name: 'Apoio atual', value: role ? `<@&${role.id}>` : 'Sem apoio registrado', inline: true },
                 { name: 'Data de validade', value: expiryDate, inline: true }
             ];
 
-            // Adiciona o responsável pelo suporte se existir
             if (supportUser) {
                 fields.push({
                     name: 'Responsável pelo Suporte',
@@ -75,14 +69,12 @@ module.exports = {
                 });
             }
 
-            // Criação do embed de resposta
             const embed = await createSupportEmbed({
                 description: `Detalhes do seu apoio no servidor **${guildName}**:`,
                 color: EmbedColors.INFO,
                 fields
             });
 
-            // Responde com o embed
             await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {

@@ -8,8 +8,13 @@ async function loadModelsIntoClient(client) {
     const modelFiles = fs.readdirSync(modelsDir).filter(file => file.endsWith('.js'));
     const sequelize = db.sequelize;
 
-    db.initDatabase(); // Inicializa o banco de dados
-    db.runMigrations(); // Executa as migrations pendentes
+    try {
+        await db.initDatabase(); // Inicializa o banco de dados (autentica e opcionalmente sync)
+        await db.runMigrations(); // Executa as migrations pendentes e aguarda conclusão
+    } catch (err) {
+        throw new Error(`Falha ao inicializar banco/migrations: ${err?.stack || err?.message || err}`);
+    }
+
     client.db = {
         sequelize: sequelize, // ✅ Adiciona a instância do Sequelize aqui
     };
@@ -29,9 +34,7 @@ async function loadModelsIntoClient(client) {
         client.db[model.name] = model;
     }
 
-    // Sincronizar todos os modelos
-    await sequelize.sync();
-    client.logger.info('📦 Todos os modelos foram sincronizados com o banco de dados.');
+    client.logger.info('📦 Modelos carregados; migrations/sync delegados ao initDatabase.');
 }
 
 module.exports = { loadModelsIntoClient };
