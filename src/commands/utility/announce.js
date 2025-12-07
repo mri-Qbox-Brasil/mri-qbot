@@ -20,7 +20,6 @@ const streamPipeline = promisify(pipeline);
 
 const DEFAULT_TIMEOUT_HOURS = parseInt(process.env.ANNOUNCE_TIMEOUT_HOURS || '24', 10);
 const MSG_TIMEOUT = 45;
-// evita envios duplicados por collectors + handlers globais
 const processingSends = new Set();
 
 module.exports = {
@@ -239,7 +238,6 @@ module.exports = {
                         }
 
                         if (baseId === 'announceButton_send') {
-                            // prevenir execução duplicada: await executeSend que fará edição/cleanup
                             await executeSend(comp, channelId, cmdChannelId, cmdMessageId);
                             finished = true;
                             try {
@@ -533,7 +531,6 @@ async function executeSelect(interaction, comp, msgId) {
         }
     } catch (_) { /* ignore */ }
 
-    // parse announceId from the component interaction
     const announceDataEntry = await getAnnounceData(comp);
 
     if (!announceDataEntry) {
@@ -572,7 +569,6 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
 
     if (!announceDataEntry) return;
 
-    // try to refresh content from the actual last user message in the temp channel
     try {
         const client = interaction.client;
         const tempChannel = await client.channels.fetch(channelId).catch(() => null);
@@ -580,10 +576,8 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
             try {
                 const fetched = await tempChannel.messages.fetch({ limit: 20 });
                 if (fetched && fetched.size > 0) {
-                    // find the most recent message by the owner
                     const ownerMsg = fetched.find(m => m.author && m.author.id === announceDataEntry.ownerId);
                     if (ownerMsg) {
-                        // update DB with latest content and attachments before sending
                         announceDataEntry.content = ownerMsg.content;
                         try {
                             const atts = ownerMsg.attachments ? ownerMsg.attachments.map(a => ({ url: a.url, name: a.name || a.id })) : [];
@@ -593,12 +587,10 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
                     }
                 }
             } catch (_) {
-                // ignore fetch errors, fallback to DB content
             }
         }
     } catch (_) { /* ignore */ }
 
-    // Persistent DB lock to avoid cross-process duplication
     const sequelize = interaction.client.db?.sequelize;
     const AnnounceDataModel = interaction.client.db?.AnnounceData;
     const LOCK_TTL_MS = 30 * 1000; // 30s lock
@@ -606,22 +598,18 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
     if (sequelize && AnnounceDataModel) {
         const t = await sequelize.transaction();
         try {
-            // re-load row with FOR UPDATE
             const row = await AnnounceDataModel.findOne({ where: { id: announceDataEntry.id }, transaction: t, lock: t.LOCK.UPDATE });
             const now = new Date();
             if (row.sentAt) {
-                // already sent
                 await t.commit();
                 try { await interaction.reply({ content: 'Este anúncio já foi enviado anteriormente.', flags: MessageFlags.Ephemeral }); } catch(_) {}
                 return;
             }
             if (row.lockedUntil && new Date(row.lockedUntil) > now) {
-                // locked by other instance
                 await t.commit();
                 try { await interaction.reply({ content: 'Anúncio já está sendo processado por outra instância.', flags: MessageFlags.Ephemeral }); } catch(_) {}
                 return;
             }
-            // acquire lock
             row.lockedUntil = new Date(Date.now() + LOCK_TTL_MS);
             await row.save({ transaction: t });
             await t.commit();
@@ -629,7 +617,6 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
         } catch (err) {
             try { await t.rollback(); } catch(_) {}
             interaction.client.logger.debug('[announce executeSend] falha ao adquirir lock DB', { error: err?.stack || err });
-            // fallback to in-memory lock
             if (processingSends.has(announceDataEntry.id)) {
                 try { await interaction.reply({ content: 'Anúncio já está sendo processado...', flags: MessageFlags.Ephemeral }); } catch(_) {}
                 return;
@@ -637,7 +624,6 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
             processingSends.add(announceDataEntry.id);
         }
     } else {
-        // fallback in-memory lock
         if (processingSends.has(announceDataEntry.id)) {
             try { await interaction.reply({ content: 'Anúncio já está sendo processado...', flags: MessageFlags.Ephemeral }); } catch(_) {}
             return;
@@ -671,7 +657,6 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
             try { attachments = JSON.parse(announceDataEntry.attachments) || []; } catch (_) { attachments = []; }
         }
 
-        // attachments may be array of strings (legacy) or objects {url,name}
         const files = [];
         const tempFilesToRemove = [];
         const MAX_IN_MEMORY = 5 * 1024 * 1024; // 5 MB
@@ -681,7 +666,6 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
                 const url = typeof a === 'string' ? a : a.url;
                 const name = typeof a === 'string' ? (a.split('?')[0].split('/').pop() || 'file') : (a.name || (a.url.split('?')[0].split('/').pop()) || 'file');
 
-                // try to HEAD to get size
                 let useStream = false;
                 try {
                     const head = await fetchWithRetry(url, { method: 'HEAD', timeout: 5000 }).catch(() => null);
@@ -690,11 +674,9 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
                 } catch (_) { /* ignore */ }
 
                 if (!useStream) {
-                    // try small download into memory
                     const res = await fetchWithRetry(url, { method: 'GET', responseType: 'arraybuffer', timeout: 20000 }, 3, 8000);
                     const buffer = Buffer.from(res.data);
                     if (buffer.length > MAX_IN_MEMORY) {
-                        // fallback to stream-to-disk
                         useStream = true;
                     } else {
                         files.push({ attachment: buffer, name });
@@ -703,7 +685,6 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
                 }
 
                 if (useStream) {
-                    // stream to temp file
                     const tmpPath = path.join(os.tmpdir(), `announce-${announceDataEntry.id}-${Date.now()}-${name}`.replace(/[^a-zA-Z0-9._-]/g, '_'));
                     const response = await fetchWithRetry(url, { method: 'GET', responseType: 'stream', timeout: 60000 }, 3, 8000);
                     const writer = fs.createWriteStream(tmpPath);
@@ -722,7 +703,6 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
             await targetChannel.send({ content: announceDataEntry.content });
         }
 
-        // cleanup temp files
         for (const f of tempFilesToRemove) {
             try {
                 if (fs.existsSync(f)) fs.unlinkSync(f);
@@ -730,11 +710,30 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
                 try { interaction.client.logger.warn('[announce cleanup] falha ao remover tempfile', { file: f, error: err?.stack || err?.message || err }); } catch(_) {}
             }
         }
-        // editar mensagem do comando e confirmar para o usuário
         await deferReply(interaction, cmdChannelId, cmdMessageId, `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`);
         try { await interaction.reply({ content: `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`, flags: MessageFlags.Ephemeral }); } catch (_) { /* ignore if already replied/updated */ }
-        await cleanup(interaction, channelId, 'sent');
-        // mark sentAt and clear lockedUntil
+
+        try {
+            const CMD_DELETE_DELAY_MS = 30 * 1000;
+            const cmdChannel = await interaction.client.channels.fetch(cmdChannelId).catch(() => null);
+            if (cmdChannel) {
+                const cmdMsg = await cmdChannel.messages.fetch(cmdMessageId).catch(() => null);
+                if (cmdMsg && cmdMsg.editable) {
+                    const deleteTimestampSec = Math.floor(Date.now() / 1000) + Math.ceil(CMD_DELETE_DELAY_MS / 1000);
+                    const newContent = `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.\nEsta mensagem será removida <t:${deleteTimestampSec}:R>.`;
+                    await cmdMsg.edit(newContent).catch(() => null);
+                    setTimeout(() => {
+                        cmdMsg.delete().catch(() => null);
+                    }, CMD_DELETE_DELAY_MS);
+                }
+            }
+
+            await cleanup(interaction, channelId, 'sent');
+        } catch (err) {
+            interaction.client.logger.debug('[announce executeSend] falha ao editar/excluir mensagem do comando ou ao limpar canal', { error: err?.stack || err });
+            try { await cleanup(interaction, channelId, 'sent'); } catch (_) { }
+        }
+
         try {
             const AnnounceDataModel = interaction.client.db?.AnnounceData;
             if (AnnounceDataModel) {
@@ -752,7 +751,6 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
             error: err
         });
         try { await interaction.reply({ content: 'Falha ao enviar o anúncio para o canal selecionado.', flags: MessageFlags.Ephemeral }); } catch(_) {}
-        // clear lock on error
         try {
             const AnnounceDataModel = interaction.client.db?.AnnounceData;
             if (AnnounceDataModel) {
