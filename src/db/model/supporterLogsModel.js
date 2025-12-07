@@ -37,7 +37,7 @@ module.exports = (sequelize) => {
             type: DataTypes.DATE,
             defaultValue: DataTypes.NOW,
         }
-    });
+    }, { timestamps: true });
 
     return SupporterLogs;
 };

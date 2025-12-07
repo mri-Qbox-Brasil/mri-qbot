@@ -6,7 +6,7 @@
 ![Pull Requests](https://img.shields.io/github/issues-pr/{{repository}}.svg)
 ![Last Commit](https://img.shields.io/github/last-commit/{{repository}}.svg?color=blue)
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/{{repository}})
-[![Creative Commons License](https://licensebuttons.net/l/by/1.0/80x15.png)](https://creativecommons.org/licenses/by/1.0/)
+[![CC0 1.0 Universal](https://licensebuttons.net/zero/1.0/80x15.png)](https://creativecommons.org/publicdomain/zero/1.0/)
 
 This is a template repo for creating discord bots using NodeJS and Discord.js.
 
@@ -65,7 +65,7 @@ docker run -e DISCORD_TOKEN=<YOUR_DISCORD_TOKEN> your-docker-image
 Feel free to contribute! Open issues or submit pull requests for any improvements or features you'd like to add.
 
 ## License
-This project is licensed under the [Creative Commons Attribution 1.0 License](https://creativecommons.org/licenses/by/1.0/).
+This project is licensed under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). The image metadata labels use `org.opencontainers.image.licenses=CC0-1.0`.
 
 ## Dependabot
 

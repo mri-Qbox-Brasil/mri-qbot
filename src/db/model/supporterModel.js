@@ -31,7 +31,7 @@ module.exports = (sequelize) => {
             type: DataTypes.BOOLEAN,
             defaultValue: true
         }
-    });
+    }, { timestamps: true });
 
     return Supporters;
 };

@@ -52,7 +52,7 @@ module.exports = (sequelize) => {
         }
       },
     },
-  });
+  }, { timestamps: true });
 
   // Métodos auxiliares acoplados no modelo
   Configuration.getConfig = async function (guildId, key) {

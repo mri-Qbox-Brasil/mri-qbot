@@ -11,6 +11,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 jobs:
   prepare_repository:
@@ -94,6 +95,11 @@ jobs:
           echo "META TAGS: ${{ steps.meta.outputs.tags }}"
           echo "META LABELS: ${{ steps.meta.outputs.labels }}"
 
+      - name: Set created timestamp
+        id: date
+        run: |
+          echo "created=$(date --utc +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
       - name: Build and Push
         uses: docker/build-push-action@v5
         with:
@@ -103,7 +109,50 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.title=${{ github.event.repository.name }}
+            org.opencontainers.image.description=${{ github.event.repository.description }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.date.outputs.created }}
+            org.opencontainers.image.authors=${{ github.actor }}
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
+            org.opencontainers.image.licenses=CC0-1.0
+
+      - name: Generate SBOMs (Syft)
+        if: always()
+        run: |
+          echo "Generating SBOMs for images: ${{ steps.meta.outputs.tags }}"
+          mkdir -p sboms
+          IFS=',' read -ra IMAGES <<< "${{ steps.meta.outputs.tags }}"
+          for IMG in "${IMAGES[@]}"; do
+            # normalize filename
+            FN=$(echo "$IMG" | sed 's|[:/]|_|g')
+            echo "Generating SBOM for $IMG -> sboms/sbom-$FN.json"
+            docker run --rm -v "$PWD":/work -w /work anchore/syft:latest syft "$IMG" -o cyclonedx-json > "sboms/sbom-$FN.json"
+          done
+
+      - name: Upload SBOM artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sboms
+          path: sboms/
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v2
+
+      - name: Sign images with cosign (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          echo "Signing images: ${{ steps.meta.outputs.tags }}"
+          IFS=',' read -ra IMAGES <<< "${{ steps.meta.outputs.tags }}"
+          for IMG in "${IMAGES[@]}"; do
+            echo "Signing $IMG (keyless)..."
+            cosign sign --keyless "$IMG"
+          done
 
   generate_release_notes:
     name: 📝 Gerar notas de release
@@ -157,7 +206,8 @@ jobs:
     needs: [build_docker, generate_release_notes]
     steps:
       - name: Create GitHub Release
-        uses: comnoco/create-release-action@v2
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -166,6 +216,31 @@ jobs:
           body: "${{ needs.generate_release_notes.outputs.release_body }}"
           draft: false
           prerelease: false
+
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sboms
+          path: ./sboms
+
+      - name: Upload SBOMs to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          UPLOAD_URL="${{ steps.create_release.outputs.upload_url }}"
+          if [ -z "$UPLOAD_URL" ]; then
+            echo "No upload_url available from create-release action"
+            exit 1
+          fi
+          for f in sboms/*; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            echo "Uploading $name to release"
+            curl -s -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Content-Type: application/json" \
+              --data-binary @"$f" "$UPLOAD_URL?name=$name"
+          done
 
   post_to_discord:
     name: 🔔 Notificar no Discord
