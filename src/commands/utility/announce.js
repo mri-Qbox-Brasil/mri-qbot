@@ -10,6 +10,7 @@ const {
 } = require('discord.js');
 const { sendReply } = require('../../utils/generalUtils');
 const axios = require('axios');
+const { fetchWithRetry } = require('../../utils/httpRetry');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -683,14 +684,14 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
                 // try to HEAD to get size
                 let useStream = false;
                 try {
-                    const head = await axios.head(url, { timeout: 5000 }).catch(() => null);
+                    const head = await fetchWithRetry(url, { method: 'HEAD', timeout: 5000 }).catch(() => null);
                     const len = head?.headers?.['content-length'] ? parseInt(head.headers['content-length'], 10) : NaN;
                     if (!isNaN(len) && len > MAX_IN_MEMORY) useStream = true;
                 } catch (_) { /* ignore */ }
 
                 if (!useStream) {
                     // try small download into memory
-                    const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 20000 });
+                    const res = await fetchWithRetry(url, { method: 'GET', responseType: 'arraybuffer', timeout: 20000 }, 3, 8000);
                     const buffer = Buffer.from(res.data);
                     if (buffer.length > MAX_IN_MEMORY) {
                         // fallback to stream-to-disk
@@ -704,7 +705,7 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
                 if (useStream) {
                     // stream to temp file
                     const tmpPath = path.join(os.tmpdir(), `announce-${announceDataEntry.id}-${Date.now()}-${name}`.replace(/[^a-zA-Z0-9._-]/g, '_'));
-                    const response = await axios.get(url, { responseType: 'stream', timeout: 60000 });
+                    const response = await fetchWithRetry(url, { method: 'GET', responseType: 'stream', timeout: 60000 }, 3, 8000);
                     const writer = fs.createWriteStream(tmpPath);
                     await streamPipeline(response.data, writer);
                     files.push({ attachment: tmpPath, name });
@@ -723,7 +724,11 @@ async function executeSend(interaction, channelId, cmdChannelId, cmdMessageId) {
 
         // cleanup temp files
         for (const f of tempFilesToRemove) {
-            try { fs.unlinkSync(f); } catch (_) { }
+            try {
+                if (fs.existsSync(f)) fs.unlinkSync(f);
+            } catch (err) {
+                try { interaction.client.logger.warn('[announce cleanup] falha ao remover tempfile', { file: f, error: err?.stack || err?.message || err }); } catch(_) {}
+            }
         }
         // editar mensagem do comando e confirmar para o usuário
         await deferReply(interaction, cmdChannelId, cmdMessageId, `Anúncio enviado para <#${selectedChannelId}>. Canal temporário será removido.`);

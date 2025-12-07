@@ -143,10 +143,12 @@ jobs:
         id: prepare_release_body
         run: |
           if [ -f release_body.txt ]; then
-              RELEASE_NOTES=$(head -c 1900 release_body.txt)
-              echo "body=$RELEASE_NOTES" >> $GITHUB_OUTPUT
+            # Use the multiline GITHUB_OUTPUT format to avoid errors when the body contains newlines
+            echo "body<<EOF" >> $GITHUB_OUTPUT
+            head -c 1900 release_body.txt >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           else
-              echo "body=Nenhuma nota de release disponível." >> $GITHUB_OUTPUT
+            echo "body=Nenhuma nota de release disponível." >> $GITHUB_OUTPUT
           fi
 
   create_release:
