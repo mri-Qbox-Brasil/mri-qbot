@@ -120,25 +120,7 @@ jobs:
             org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
             org.opencontainers.image.licenses=CC0-1.0
 
-      - name: Generate SBOMs (Syft)
-        if: always()
-        run: |
-          echo "Generating SBOMs for images: ${{ steps.meta.outputs.tags }}"
-          mkdir -p sboms
-          IFS=',' read -ra IMAGES <<< "${{ steps.meta.outputs.tags }}"
-          for IMG in "${IMAGES[@]}"; do
-            # normalize filename
-            FN=$(echo "$IMG" | sed 's|[:/]|_|g')
-            echo "Generating SBOM for $IMG -> sboms/sbom-$FN.json"
-            docker run --rm -v "$PWD":/work -w /work anchore/syft:latest syft "$IMG" -o cyclonedx-json > "sboms/sbom-$FN.json"
-          done
-
-      - name: Upload SBOM artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sboms
-          path: sboms/
+      # SBOM generation removed (opted out).
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v2
@@ -217,30 +199,7 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Download SBOM artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: sboms
-          path: ./sboms
-
-      - name: Upload SBOMs to Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          UPLOAD_URL="${{ steps.create_release.outputs.upload_url }}"
-          if [ -z "$UPLOAD_URL" ]; then
-            echo "No upload_url available from create-release action"
-            exit 1
-          fi
-          for f in sboms/*; do
-            [ -f "$f" ] || continue
-            name=$(basename "$f")
-            echo "Uploading $name to release"
-            curl -s -X POST \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Content-Type: application/json" \
-              --data-binary @"$f" "$UPLOAD_URL?name=$name"
-          done
+      # SBOM download/upload steps removed.
 
   post_to_discord:
     name: 🔔 Notificar no Discord
