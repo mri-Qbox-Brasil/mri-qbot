@@ -56,12 +56,18 @@ process.on('uncaughtException', (err) => {
 
 (async () => {
     try {
+        try {
+            await loadModelsIntoClient(client);
+        } catch (modelsErr) {
+            client.logger.error('Falha ao carregar modelos do banco antes do login.', { stack: modelsErr?.stack || modelsErr });
+            throw modelsErr;
+        }
+
         await loadEvents(client);
         await syncCommands(client, await loadCommands(client));
 
         client.once('clientReady', async () => {
             try {
-                await loadModelsIntoClient(client);
                 if (!process.env.DEBUG_MODE) {
                     supporterWorker(client, SUPPORTER_CHECK_PERIOD);
                     announceWorker(client, ANNOUNCE_CHECK_PERIOD);
