@@ -1,6 +1,6 @@
 {
     "name": "mri-qbot",
-    "version": "1.0.31",
+    "version": "1.0.32",
     "description": "Your awesome bot.",
     "main": "src/bot.js",
     "scripts": {
