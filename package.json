@@ -9,7 +9,7 @@
         "postinstall": "pnpm rebuild sqlite3 || echo 'Rebuild falhou, tente rodar pnpm rebuild sqlite3 manualmente'"
     },
     "dependencies": {
-        "@discordjs/builders": "^1.13.0",
+        "@discordjs/builders": "^1.13.1",
         "@discordjs/rest": "^2.6.0",
         "axios": "^1.13.2",
         "cheerio": "^1.1.2",
