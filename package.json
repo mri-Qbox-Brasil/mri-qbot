@@ -6,7 +6,8 @@
     "scripts": {
         "dev": "nodemon src/bot.js",
         "start": "node src/bot.js",
-        "postinstall": "pnpm rebuild sqlite3 || echo 'Rebuild falhou, tente rodar pnpm rebuild sqlite3 manualmente'"
+        "postinstall": "pnpm rebuild sqlite3 || echo 'Rebuild falhou, tente rodar pnpm rebuild sqlite3 manualmente'",
+        "release": "node .github/scripts/generate_release.js"
     },
     "dependencies": {
         "@discordjs/builders": "^1.13.1",
