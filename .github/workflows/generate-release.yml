@@ -194,6 +194,7 @@ jobs:
             # Use the multiline GITHUB_OUTPUT format to avoid errors when the body contains newlines
             echo "body<<EOF" >> $GITHUB_OUTPUT
             head -c 1900 release_body.txt >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           else
             echo "body=Nenhuma nota de release disponível." >> $GITHUB_OUTPUT
