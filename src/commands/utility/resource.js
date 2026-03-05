@@ -12,20 +12,42 @@ module.exports = {
                 .setDescription('Nome do resource para buscar')
                 .setRequired(true)
                 .setAutocomplete(true)
+        )
+        .addBooleanOption(option =>
+            option
+                .setName('atualizar')
+                .setDescription('Forçar a atualização do cache do GitHub? (opcional)')
+                .setRequired(false)
         ),
 
     async autocomplete(interaction) {
-        const focusedValue = interaction.options.getFocused();
+        const focusedValue = interaction.options.getFocused().toLowerCase();
         console.log(`[resource] Autocomplete iniciado. Valor: "${focusedValue}"`);
 
         try {
+            // No autocomplete, sempre tentamos o cache primeiro (sem forçar)
             const repos = await fetchFxManifestRepos();
 
             // Filtra os repositórios pelo nome OU descrição
-            const filtered = repos.filter(repo => {
-                const nameMatch = repo.name.toLowerCase().includes(focusedValue.toLowerCase());
-                const descMatch = repo.description && repo.description.toLowerCase().includes(focusedValue.toLowerCase());
+            let filtered = repos.filter(repo => {
+                const nameMatch = repo.name.toLowerCase().includes(focusedValue);
+                const descMatch = repo.description && repo.description.toLowerCase().includes(focusedValue);
                 return nameMatch || descMatch;
+            });
+
+            // "Burlar" o limite de 25 do Discord: Priorizar quem COMEÇA com o termo buscado
+            // Isso garante que se o usuário digitar "qbx", os repos "qbx-core" apareçam primeiro
+            filtered.sort((a, b) => {
+                const aName = a.name.toLowerCase();
+                const bName = b.name.toLowerCase();
+                const aStartsWith = aName.startsWith(focusedValue);
+                const bStartsWith = bName.startsWith(focusedValue);
+
+                if (aStartsWith && !bStartsWith) return -1;
+                if (!aStartsWith && bStartsWith) return 1;
+
+                // Se ambos começam ou nenhum começa, manter ordem alfabética
+                return aName.localeCompare(bName);
             });
 
             // Discord permite no máximo 25 opções
@@ -37,7 +59,7 @@ module.exports = {
                     // Formata: "Nome: Descrição" (max 100 caracteres)
                     let label = repo.name;
                     if (repo.description) {
-                        const maxDescLen = 95 - label.length; // -5 para separador ": " e reticências
+                        const maxDescLen = 95 - label.length;
                         if (maxDescLen > 5) {
                             let desc = repo.description;
                             if (desc.length > maxDescLen) {
@@ -60,13 +82,15 @@ module.exports = {
 
     async execute(interaction) {
         const selectedFullName = interaction.options.getString('nome');
-        console.log(`[resource] Comando executado. Selecionado: "${selectedFullName}"`);
+        const forceRefresh = interaction.options.getBoolean('atualizar') || false;
 
-        // Defer reply se achar que pode demorar (o fetch pode demorar se cache expirou)
+        console.log(`[resource] Comando executado. Selecionado: "${selectedFullName}", Atualizar: ${forceRefresh}`);
+
+        // Defer reply se achar que pode demorar (o fetch pode demorar se cache expirou ou forceRefresh)
         await interaction.deferReply();
 
         try {
-            const repos = await fetchFxManifestRepos();
+            const repos = await fetchFxManifestRepos(forceRefresh);
             const repo = repos.find(r => r.full_name === selectedFullName);
 
             if (!repo) {

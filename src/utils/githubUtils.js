@@ -12,10 +12,11 @@ let lastFetchTime = 0;
 /**
  * Busca repositórios que contém fxmanifest.lua para o usuário mri-Qbox-Brasil.
  * Utiliza cache em memória para evitar rate limits.
+ * @param {boolean} forceRefresh - Se true, ignora o cache e busca novamente.
  */
-async function fetchFxManifestRepos() {
-    // Retorna cache válido se existir
-    if (repoCache && (Date.now() - lastFetchTime < CACHE_TTL)) {
+async function fetchFxManifestRepos(forceRefresh = false) {
+    // Retorna cache válido se existir e não for forçado
+    if (!forceRefresh && repoCache && (Date.now() - lastFetchTime < CACHE_TTL)) {
         return repoCache;
     }
 
