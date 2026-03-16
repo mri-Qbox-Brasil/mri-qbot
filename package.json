@@ -21,7 +21,7 @@
         "mri-qbot": "file:",
         "mysql2": "^3.18.2",
         "node-cron": "^4.2.1",
-        "sequelize": "^6.37.7",
+        "sequelize": "^6.37.8",
         "umzug": "^3.8.2",
         "winston": "^3.9.0",
         "winston-graylog2": "^2.1.2"
