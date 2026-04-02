@@ -54,29 +54,40 @@ module.exports = {
             const limited = filtered.slice(0, 25);
             console.log(`[resource] Retornando ${limited.length} opções para autocomplete.`);
 
-            await interaction.respond(
-                limited.map(repo => {
-                    // Formata: "Nome: Descrição" (max 100 caracteres)
-                    let label = repo.name;
-                    if (repo.description) {
-                        const maxDescLen = 95 - label.length;
-                        if (maxDescLen > 5) {
-                            let desc = repo.description;
-                            if (desc.length > maxDescLen) {
-                                desc = desc.substring(0, maxDescLen) + '...';
-                            }
-                            label = `${repo.name}: ${desc}`;
+            const response = limited.map(repo => {
+                // Formata: "Nome: Descrição" (max 100 caracteres)
+                let label = repo.name;
+                if (repo.description) {
+                    const maxDescLen = 95 - label.length;
+                    if (maxDescLen > 5) {
+                        let desc = repo.description;
+                        if (desc.length > maxDescLen) {
+                            desc = desc.substring(0, maxDescLen) + '...';
                         }
+                        label = `${repo.name}: ${desc}`;
                     }
-                    return { name: label, value: repo.full_name };
-                })
-            );
+                }
+                return { name: label, value: repo.full_name };
+            });
+
+            try {
+                await interaction.respond(response);
+            } catch (err) {
+                // Silencia erros de interação desconhecida ou expirada
+                if (err.code === 10062 || err.code === 40060) return;
+                throw err;
+            }
         } catch (error) {
+            // Ignora se o erro capturado aqui já for de interação morta
+            if (error.code === 10062 || error.code === 40060) return;
+
             console.error('[resource] Erro no autocomplete:', error);
             // Silencia erro no autocomplete para não poluir,
             // mas o safeAsync pode logar se explodir.
-            // Retorna vazio em caso de falha grave
-            await interaction.respond([]);
+            // Retorna vazio em caso de falha grave, tratando possível expiração
+            try {
+                await interaction.respond([]);
+            } catch (_) { /* ignore */ }
         }
     },
 

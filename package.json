@@ -7,16 +7,21 @@
         "dev": "nodemon src/bot.js",
         "start": "node src/bot.js",
         "postinstall": "pnpm rebuild sqlite3 || echo 'Rebuild falhou, tente rodar pnpm rebuild sqlite3 manualmente'",
-        "release": "node .github/scripts/generate_release.js"
+        "release": "semantic-release"
     },
     "dependencies": {
         "@discordjs/builders": "^1.13.1",
         "@discordjs/rest": "^2.6.1",
-        "axios": "^1.14.0",
+        "axios": "^1.6.8",
         "cheerio": "^1.2.0",
+        "cookie-parser": "^1.4.7",
+        "cors": "^2.8.6",
         "discord-api-types": "^0.38.43",
         "discord.js": "^14.24.2",
         "dotenv": "^17.3.1",
+        "express": "^5.2.1",
+        "express-session": "^1.19.0",
+        "jsonwebtoken": "^9.0.3",
         "moment": "^2.30.1",
         "mri-qbot": "file:",
         "mysql2": "^3.20.0",
@@ -27,7 +32,14 @@
         "winston-graylog2": "^2.1.2"
     },
     "devDependencies": {
+        "@semantic-release/changelog": "^6.0.3",
+        "@semantic-release/commit-analyzer": "^13.0.1",
+        "@semantic-release/git": "^10.0.1",
+        "@semantic-release/github": "^12.0.6",
+        "@semantic-release/npm": "^13.1.5",
+        "@semantic-release/release-notes-generator": "^14.1.0",
         "nodemon": "^3.1.14",
+        "semantic-release": "^25.0.3",
         "sqlite": "^5.1.1",
         "sqlite3": "^6.0.1"
     }

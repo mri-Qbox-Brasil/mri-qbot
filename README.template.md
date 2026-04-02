@@ -1,4 +1,4 @@
-# Discord Bot Template
+# MRI QBot
 
 ![Build Status](https://github.com/{{repository}}/actions/workflows/generate-release.yml/badge.svg)
 ![GitHub package.json version](https://img.shields.io/github/package-json/v/{{repository}}?color=blue)
@@ -8,41 +8,50 @@
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/{{repository}})
 [![CC0 1.0 Universal](https://licensebuttons.net/zero/1.0/80x15.png)](https://creativecommons.org/publicdomain/zero/1.0/)
 
-This is a template repo for creating discord bots using NodeJS and Discord.js.
+MRI QBot is a specialized Discord bot designed for the MRI Qbox Brasil ecosystem, featuring membership verification and OAuth2 integration for external services.
 
 ## Features
 
-- Easily configurable bot setup
-- Support for commands and events
-- Docker support for containerized deployment
-- Automated release process with GitHub Actions
-- Dependency management with Dependabot
+- **Membership Verification**: Integrated system to verify guild members.
+- **OAuth2 Service**: Secure JWT-based authentication for external projects.
+- **Docker Ready**: Fully containerized with optimized builds.
+- **Automated CI/CD**: Seamless release process using Semantic Release and GitHub Actions.
+- **Database Support**: Built with Sequelize for robust data management.
 
 ## Usage
 
-First, let's define the bot's author and name. To do so, we need to edit the `package.json` file and input the following:
+To get started with local development, ensure you have `pnpm` installed.
 
-```json
-{
-    "name": "discord-bot-template", //Name of the bot goes here, note that in dependencies, we also use the same. Use '-' is a good practice.
-    "version": "1.0.0", //Version of the bot. It will be overwritten by the `generate-release` script.
-    "description": "Your awesome bot.", //Description of the bot.
-    "main": "src/bot.js",
-    "scripts": {
-        "start": "node src/bot.js"
-    },
-    "dependencies": {
-        "discord.js": "^14.16.2",
-        "dotenv": "^16.4.5",
-        "discord-bot-template": "file:"
-    }
-}
+### Installation
+
+```bash
+pnpm install
 ```
 
-The Discord token is stored in the `.env` file. This way, when in production, we can use environment variables to set it using the `-e` within `docker run`.
+### Development
+
+```bash
+pnpm dev
+```
+
+### Configuration
+
+The bot uses environmental variables for configuration. Create a `.env` file based on the template below:
+
 ```env
 DISCORD_TOKEN=<YOUR_DISCORD_TOKEN>
+CLIENT_ID=<DISCORD_CLIENT_ID>
+CLIENT_SECRET=<DISCORD_CLIENT_SECRET>
+REDIRECT_URI=http://localhost:3000/auth/callback
+JWT_SECRET=your_super_secret_jwt_key
+SERVER_PORT=3000
 ```
+
+## OAuth2 Integration
+
+MRI QBot provides an OAuth2 service that allows external projects (like dashboards or websites) to verify if a user is a member of a specific Discord guild and what their permissions are.
+
+For detailed instructions and implementation examples, please refer to the **[OAuth2 Documentation](OAUTH2.md)**.
 
 ## Commands and Events
 

@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Generate files from templates
+        run: |
+          LOWERCASE_REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          # Generate README.md
+          sed -e "s|{{repository}}|${{ github.repository }}|g" \
+            README.template.md > README.md
+            
+          # Generate docker-compose.yml
+          sed -e "s|{{lowercase_repo}}|${LOWERCASE_REPO}|g" \
+              -e "s|{{repository}}|${{ github.event.repository.name }}|g" \
+              docker-compose.yml.template > docker-compose.yml
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release

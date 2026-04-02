@@ -1,7 +1,4 @@
-name: Build and Release
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+name: Docker Release
 
 on:
   push:
@@ -9,59 +6,14 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write
+  contents: read
   packages: write
   id-token: write
 
 jobs:
-  prepare_repository:
-    name: 📦 Preparar repositório
-    runs-on: ubuntu-latest
-    outputs:
-      lowercase_repo: ${{ steps.repo_name.outputs.lowercase_repo }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set lowercase repository name
-        id: repo_name
-        run: |
-          LOWERCASE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          echo "lowercase_repo=$LOWERCASE_REPO" >> $GITHUB_OUTPUT
-
-      - name: Update package version, generate and push README
-        run: |
-          echo "::group::Atualizando arquivos e commitando na main"
-          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
-          LOWERCASE_REPO="ghcr.io/${{ steps.repo_name.outputs.lowercase_repo }}"
-
-          npm version $CURRENT_TAG --no-git-tag-version || echo "Versão já está configurada."
-
-          rm -f README.md docker-compose.yml
-
-          sed -e "s|{{repository}}|${{ github.repository }}|g" \
-            README.template.md > README.md
-
-          sed -e "s|{{lowercase_repo}}|${LOWERCASE_REPO}|g" \
-              -e "s|{{repository}}|${{ github.event.repository.name }}|g" \
-              docker-compose.yml.template > docker-compose.yml
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add README.md docker-compose.yml package.json
-          git commit -m "chore(skip ci): Atualizado README.md e docker-compose.yml" || echo "Nenhuma mudança detectada."
-          git push origin HEAD:main
-          echo "::endgroup::"
-
   build_docker:
     name: 🐳 Build & Push Docker
     runs-on: ubuntu-latest
-    needs: prepare_repository
-    outputs:
-      image_tags: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -81,19 +33,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase repository name
+        id: repo_name
+        run: |
+          LOWERCASE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "lowercase_repo=$LOWERCASE_REPO" >> $GITHUB_OUTPUT
+
       - name: Docker Metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ needs.prepare_repository.outputs.lowercase_repo }}
+          images: ghcr.io/${{ steps.repo_name.outputs.lowercase_repo }}
           tags: |
             type=raw,value=latest
             type=raw,value=${{ github.ref_name }}
-
-      - name: Debug Docker metadata
-        run: |
-          echo "META TAGS: ${{ steps.meta.outputs.tags }}"
-          echo "META LABELS: ${{ steps.meta.outputs.labels }}"
 
       - name: Set created timestamp
         id: date
@@ -110,7 +63,6 @@ jobs:
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.title=${{ github.event.repository.name }}
-            org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.url=https://github.com/${{ github.repository }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ github.ref_name }}
@@ -120,130 +72,40 @@ jobs:
             org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
             org.opencontainers.image.licenses=CC0-1.0
 
-      # SBOM generation removed (opted out).
-
-      - name: Install cosign (explicit)
+      - name: Install cosign
         run: |
           COSIGN_VERSION=v2.1.0
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "x86_64" ]; then
-            BIN=cosign-linux-amd64
-          elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-            BIN=cosign-linux-arm64
-          else
-            BIN=cosign-linux-amd64
-          fi
-          curl -sL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/${BIN}" -o cosign
+          curl -sL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" -o cosign
           chmod +x cosign
           sudo mv cosign /usr/local/bin/cosign
-          cosign version || true
 
-      - name: Sign images with cosign (keyless)
+      - name: Sign images with cosign
         env:
           COSIGN_EXPERIMENTAL: '1'
         run: |
-          echo "cosign version: $(cosign version)"
-          echo "cosign help (sign):"; cosign help sign || true
-          echo "Signing images: ${{ steps.meta.outputs.tags }}"
           IFS=',' read -ra IMAGES <<< "${{ steps.meta.outputs.tags }}"
           for IMG in "${IMAGES[@]}"; do
-            echo "Signing $IMG (keyless)..."
-            cosign sign --keyless "$IMG" || {
-              echo "Keyless signing failed for $IMG.\nPossible causes:\n - installed cosign does not support --keyless\n - OIDC is disabled for this repository/org\n - network access to fulcio/rekor is blocked\nAttempting fallback: skip signing for this image.";
-            }
+            echo "Signing $IMG..."
+            cosign sign --keyless "$IMG" || echo "Signing failed for $IMG, skipping."
           done
-
-  generate_release_notes:
-    name: 📝 Gerar notas de release
-    runs-on: ubuntu-latest
-    outputs:
-      release_body: ${{ steps.prepare_release_body.outputs.body }}
-      version: ${{ steps.get_project_information.outputs.version }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get commit messages
-        id: get_project_information
-        run: |
-          echo "::group::Coletando commits"
-          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
-
-          if [ -n "$LAST_TAG" ]; then
-            COMMITS=$(git log $LAST_TAG..$GITHUB_SHA --oneline --pretty=format:"%h %s")
-          else
-            COMMITS=$(git log --oneline --pretty=format:"%h %s")
-          fi
-
-          if [ -z "$COMMITS" ]; then
-            echo "Nenhuma mudança significativa desde a última release." > ./release_body.txt
-          else
-            echo "$COMMITS" > ./release_body.txt
-          fi
-
-          echo "version=$CURRENT_TAG" >> $GITHUB_OUTPUT
-          echo "::endgroup::"
-
-      - name: Prepare release body
-        id: prepare_release_body
-        run: |
-          if [ -f release_body.txt ]; then
-            # Use the multiline GITHUB_OUTPUT format to avoid errors when the body contains newlines
-            echo "body<<EOF" >> $GITHUB_OUTPUT
-            head -c 1900 release_body.txt >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "body=Nenhuma nota de release disponível." >> $GITHUB_OUTPUT
-          fi
-
-  create_release:
-    name: 🚀 Criar Release
-    runs-on: ubuntu-latest
-    needs: [build_docker, generate_release_notes]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Create GitHub Release (script)
-        id: create_release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
-          RELEASE_NAME: ${{ needs.generate_release_notes.outputs.version }}
-          RELEASE_BODY: ${{ needs.generate_release_notes.outputs.release_body }}
-        run: |
-          bash .github/scripts/create_release.sh
-
-      # SBOM download/upload steps removed.
 
   post_to_discord:
     name: 🔔 Notificar no Discord
     runs-on: ubuntu-latest
-    needs: create_release
+    needs: build_docker
     steps:
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
       - name: Post to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.UPDATE_DISCORD_WEBHOOK }}
           RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_AUTHOR: ${{ github.actor }}
-          RELEASE_BODY: ${{ needs.generate_release_notes.outputs.release_body }}
           LOGO_URL: ${{ secrets.LOGO_URL }}
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-            echo "Webhook URL não definido. Pulando o envio do webhook."
+            echo "Webhook URL não definido. Pulando."
             exit 0
           fi
-
-          REPO_DESCRIPTION=$(curl -s https://api.github.com/repos/${{ github.repository }} | jq -r .description)
 
           EMBED_DATA='{
               "embeds": [{
@@ -251,26 +113,12 @@ jobs:
                 "name": "Github - Updates",
                 "icon_url": "'"${LOGO_URL:-}"'"
               },
-              "title": "[${{ github.event.repository.name }}] Nova versão disponível: '"${RELEASE_TAG}"'",
+              "title": "[${{ github.event.repository.name }}] Nova versão Docker disponível: '"${RELEASE_TAG}"'",
               "url": "'"${RELEASE_URL}"'",
-              "description": "'"${REPO_DESCRIPTION}"'",
-              "fields": [{
-                  "name": "O que há de novo?",
-                  "value": "'"${RELEASE_BODY}"'"
-              },
-              {
-                  "name": "Veja todas as mudanças",
-                  "value": "[Veja todas as mudanças aqui](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})"
-              }],
+              "description": "A imagem Docker foi buildada e enviada para o GHCR com sucesso.",
               "color": 4243543,
-              "footer": {
-                "text": "Realizado por: '"${RELEASE_AUTHOR}"'",
-                "icon_url": "'"${LOGO_URL:-}"'"
-              },
               "timestamp": "'"$(date --utc +%Y-%m-%dT%H:%M:%SZ)"'"
               }]
           }'
 
-          curl -H "Content-Type: application/json" \
-              -d "$EMBED_DATA" \
-              $DISCORD_WEBHOOK_URL
+          curl -H "Content-Type: application/json" -d "$EMBED_DATA" $DISCORD_WEBHOOK_URL

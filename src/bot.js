@@ -7,6 +7,7 @@ const { supporterWorker } = require('./workers/supporterWorker');
 const { announceWorker } = require('./workers/announceWorker');
 const { attachLogger } = require('./utils/logger');
 const { hasPermission } = require('./utils/permissionUtils');
+const { startServer } = require('./server');
 require('dotenv').config();
 
 const { DISCORD_TOKEN, SUPPORTER_CHECK_PERIOD, ANNOUNCE_CHECK_PERIOD } = process.env;
@@ -73,6 +74,17 @@ process.on('uncaughtException', (err) => {
                     announceWorker(client, ANNOUNCE_CHECK_PERIOD);
                 } else {
                     client.logger.debug('DEBUG_MODE ativo — Workers não serão iniciados.');
+                }
+
+                // Inicia o servidor Express para OAuth2/JWT
+                if (process.env.CLIENT_ID && process.env.CLIENT_SECRET && process.env.REDIRECT_URI) {
+                    try {
+                        startServer(client);
+                    } catch (serverErr) {
+                        client.logger.error('Falha ao iniciar o servidor Express:', { stack: serverErr?.stack || serverErr });
+                    }
+                } else {
+                    client.logger.warn('Variáveis de OAuth2 não configuradas. Servidor não iniciado.');
                 }
             } catch (readyErr) {
                 client.logger.error('Erro durante o processamento do evento ready.', { stack: readyErr?.stack || readyErr });
