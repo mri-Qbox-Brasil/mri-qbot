@@ -1,3 +1,6 @@
+packages:
+  - "."
+
 onlyBuiltDependencies:
   - mri-qbot
   - sqlite3
