@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.1.0...v1.1.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* release ([4b64a14](https://github.com/mri-Qbox-Brasil/mri-qbot/commit/4b64a143b410b7c5c6d1ac0583a284dd9d210305))
+
 # [1.1.0](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.0.39...v1.1.0) (2026-04-02)
 
 
