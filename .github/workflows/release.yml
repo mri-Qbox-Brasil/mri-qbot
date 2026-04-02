@@ -15,6 +15,9 @@ jobs:
       pull-requests: write
       id-token: write
       packages: write
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
 
     steps:
       - name: Checkout
@@ -50,6 +53,128 @@ jobs:
               docker-compose.yml.template > docker-compose.yml
 
       - name: Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+
+  build_docker:
+    name: 🐳 Build & Push Docker
+    needs: release
+    if: needs.release.outputs.new_release_published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set lowercase repository name
+        id: repo_name
+        run: |
+          LOWERCASE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "lowercase_repo=$LOWERCASE_REPO" >> $GITHUB_OUTPUT
+
+      - name: Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ steps.repo_name.outputs.lowercase_repo }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.release.outputs.new_release_version }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.title=${{ github.event.repository.name }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.release.outputs.new_release_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.authors=${{ github.actor }}
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
+            org.opencontainers.image.licenses=CC0-1.0
+
+      - name: Install cosign
+        run: |
+          COSIGN_VERSION=v2.1.0
+          curl -sL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" -o cosign
+          chmod +x cosign
+          sudo mv cosign /usr/local/bin/cosign
+
+      - name: Sign images with cosign
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          IFS=',' read -ra IMAGES <<< "${{ steps.meta.outputs.tags }}"
+          for IMG in "${IMAGES[@]}"; do
+            echo "Signing $IMG..."
+            cosign sign --keyless "$IMG" || echo "Signing failed for $IMG, skipping."
+          done
+
+  notify:
+    name: 🔔 Notificar no Discord
+    needs: [release, build_docker]
+    if: always() && needs.release.outputs.new_release_published == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.UPDATE_DISCORD_WEBHOOK }}
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.release.outputs.new_release_version }}
+          RELEASE_TAG: v${{ needs.release.outputs.new_release_version }}
+          RELEASE_AUTHOR: ${{ github.actor }}
+          LOGO_URL: ${{ secrets.LOGO_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "Webhook URL não definido. Pulando."
+            exit 0
+          fi
+
+          EMBED_DATA='{
+              "embeds": [{
+              "author": {
+                "name": "Github - Release Success",
+                "icon_url": "'"${LOGO_URL:-}"'"
+              },
+              "title": "[${{ github.event.repository.name }}] Versão '"${RELEASE_TAG}"' & Imagem Docker publicadas!",
+              "url": "'"${RELEASE_URL}"'",
+              "description": "O ciclo completo de release e build Docker foi concluído com sucesso no mesmo pipeline.",
+              "color": 4243543,
+              "footer": {
+                "text": "Realizado por: '"${RELEASE_AUTHOR}"'",
+                "icon_url": "'"${LOGO_URL:-}"'"
+              },
+              "timestamp": "'"$(date --utc +%Y-%m-%dT%H:%M:%SZ)"'"
+              }]
+          }'
+
+          curl -H "Content-Type: application/json" -d "$EMBED_DATA" $DISCORD_WEBHOOK_URL
