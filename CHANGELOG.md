@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.1.1...v1.2.0) (2026-04-20)
+
+
+### Features
+
+* implement installer activity tracking and analytics ([63a978f](https://github.com/mri-Qbox-Brasil/mri-qbot/commit/63a978fcba26bd9fd068f2bb342f4538038835f3))
+
 ## [1.1.1](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.1.0...v1.1.1) (2026-04-02)
 
 
