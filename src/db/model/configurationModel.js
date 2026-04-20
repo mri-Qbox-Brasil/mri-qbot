@@ -59,17 +59,14 @@ module.exports = (sequelize) => {
     const config = await this.findOne({ where: { guildId, key } });
     if (!config) return null;
 
-    // Garantir que o valor seja um objeto válido
+    // Garantir que o valor seja um objeto válido se possível, senão retornar bruto
     const value = config.value;
     if (typeof value === "string") {
       try {
         return JSON.parse(value);
       } catch (e) {
-        console.error(
-          "[Configuration] Erro ao fazer parse do valor no getConfig:",
-          e
-        );
-        return null;
+        // Se falhar o parse, provavelmente é uma string pura (ex: URL), retornar como está
+        return value;
       }
     }
     return value;
