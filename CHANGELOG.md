@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.2.0...v1.2.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* parse configuration ([0a2b527](https://github.com/mri-Qbox-Brasil/mri-qbot/commit/0a2b52796e2eabe08208937a6997f0920e8514ce))
+
 # [1.2.0](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.1.1...v1.2.0) (2026-04-20)
 
 
