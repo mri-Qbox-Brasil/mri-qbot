@@ -24,7 +24,7 @@
         "jsonwebtoken": "^9.0.3",
         "moment": "^2.30.1",
         "mri-qbot": "file:",
-        "mysql2": "^3.22.0",
+        "mysql2": "^3.22.1",
         "node-cron": "^4.2.1",
         "sequelize": "^6.37.8",
         "umzug": "^3.8.2",
