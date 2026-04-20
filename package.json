@@ -16,7 +16,7 @@
         "cheerio": "^1.2.0",
         "cookie-parser": "^1.4.7",
         "cors": "^2.8.6",
-        "discord-api-types": "^0.38.46",
+        "discord-api-types": "^0.38.47",
         "discord.js": "^14.26.2",
         "dotenv": "^17.4.2",
         "express": "^5.2.1",
