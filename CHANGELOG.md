@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.3.1...v1.3.2) (2026-04-20)
+
+
+### Bug Fixes
+
+* command error ([f1e0a4c](https://github.com/mri-Qbox-Brasil/mri-qbot/commit/f1e0a4c410ec4ae6846ba495912039cb92a94a67))
+
 ## [1.3.1](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.3.0...v1.3.1) (2026-04-20)
 
 
