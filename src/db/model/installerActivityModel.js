@@ -11,6 +11,10 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING,
             allowNull: false
         },
+        sessionId: {
+            type: DataTypes.STRING,
+            allowNull: false
+        },
         event: {
             type: DataTypes.ENUM('start', 'finish', 'error', 'cancel'),
             allowNull: false

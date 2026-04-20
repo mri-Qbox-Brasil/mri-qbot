@@ -87,12 +87,28 @@ async function handleStats(interaction) {
     const guildId = process.env.GUILD_ID;
     const Configuration = interaction.client.db.Configuration;
     const InstallerActivity = interaction.client.db.InstallerActivity;
+    const sequelize = interaction.client.db.sequelize;
 
     try {
         const successCount = await Configuration.getConfig(guildId, 'installer_success_count') || 0;
         
-        // Buscar totais por evento
-        const sequelize = interaction.client.db.sequelize;
+        // 1. Calcular Instalações Ativas (Sessions que deram START mas não deram FINISH/ERROR/CANCEL)
+        const activeSessionsCount = await InstallerActivity.count({
+            where: {
+                event: 'start',
+                sessionId: {
+                    [Op.notIn]: sequelize.literal(`(
+                        SELECT sessionId 
+                        FROM InstallerActivities 
+                        WHERE event IN ('finish', 'error', 'cancel')
+                    )`)
+                }
+            },
+            distinct: true,
+            col: 'sessionId'
+        });
+        
+        // 2. Buscar totais por evento (histórico geral)
         const stats = await InstallerActivity.findAll({
             attributes: [
                 'event',
@@ -107,12 +123,13 @@ async function handleStats(interaction) {
         }, { start: 0, finish: 0, error: 0, cancel: 0 });
 
         const embed = createEmbed({
-            title: '📊 Estatísticas do Instalador',
-            description: `Resumo geral de atividades para a guilda **${interaction.guild.name}**.`,
+            title: '📊 Estatísticas do Instalador (Robust Mode)',
+            description: `Monitoramento inteligente baseado em Session IDs.`,
             color: EmbedColors.INFO,
             fields: [
-                { name: '✅ Instalações de Sucesso', value: `**${successCount}**`, inline: false },
-                { name: '🚀 Iniciadas', value: `\`${statsMap.start}\``, inline: true },
+                { name: '🟢 Instalações Ativas (Agora)', value: `**${activeSessionsCount}**`, inline: false },
+                { name: '✅ Total de Sucessos', value: `\`${successCount}\``, inline: true },
+                { name: '🚀 Total Iniciadas (Histórico)', value: `\`${statsMap.start}\``, inline: true },
                 { name: '❌ Erros', value: `\`${statsMap.error}\``, inline: true },
                 { name: '🟡 Canceladas', value: `\`${statsMap.cancel}\``, inline: true }
             ]

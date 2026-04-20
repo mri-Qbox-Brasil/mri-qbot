@@ -178,7 +178,7 @@ function startServer(client) {
      */
     app.post('/installer/activity', async (req, res) => {
         const authHeader = req.headers.authorization;
-        const { discord_id, event, details, timestamp } = req.body;
+        const { discord_id, session_id, event, details, timestamp } = req.body;
 
         if (!authHeader) {
             client.logger.warn('[Server] Tentativa de log de atividade sem token.');
@@ -191,32 +191,32 @@ function startServer(client) {
             jwt.verify(token, JWT_SECRET);
 
             // 2. Validar corpo básico
-            if (!discord_id || !event) {
-                return res.status(400).json({ error: 'discord_id e event são obrigatórios' });
+            if (!discord_id || !session_id || !event) {
+                return res.status(400).json({ error: 'discord_id, session_id e event são obrigatórios' });
             }
 
-            client.logger.info(`[Installer] Novo evento [${event}] recebido do usuário ${discord_id}`);
+            client.logger.info(`[Installer] Novo evento [${event}] para sessão ${session_id} (Usuário: ${discord_id})`);
 
             // 3. Salvar no Banco de Dados
             const InstallerActivity = client.db?.InstallerActivity;
             if (InstallerActivity) {
                 await InstallerActivity.create({
                     discordId: discord_id,
+                    sessionId: session_id,
                     event: event,
                     details: details,
                     timestamp: timestamp || new Date()
                 });
             }
 
-            // 4. Tratar lógicas específicas por evento
-            if (event === 'finish') {
-                const Configuration = client.db?.Configuration;
-                const guildId = process.env.GUILD_ID;
-                if (Configuration && guildId) {
-                    const currentCount = await Configuration.getConfig(guildId, 'installer_success_count') || 0;
-                    await Configuration.setConfig(guildId, 'installer_success_count', currentCount + 1);
-                    client.logger.debug(`[Installer] Contador de sucessos incrementado para: ${currentCount + 1}`);
-                }
+            // 4. Tratar lógicas específicas por evento e contadores (Cache/Total Histórico)
+            const Configuration = client.db?.Configuration;
+            const guildId = process.env.GUILD_ID;
+            
+            if (Configuration && guildId && event === 'finish') {
+                const successCount = await Configuration.getConfig(guildId, 'installer_success_count') || 0;
+                await Configuration.setConfig(guildId, 'installer_success_count', successCount + 1);
+                client.logger.debug(`[Installer] Sucesso total incrementado para: ${successCount + 1}`);
             }
 
             // 5. Notificar via Webhook
