@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.2.1...v1.3.0) (2026-04-20)
+
+
+### Features
+
+* add info ([059e36b](https://github.com/mri-Qbox-Brasil/mri-qbot/commit/059e36b98bb6f97222ee37e9638a558b4e6ec35d))
+
 ## [1.2.1](https://github.com/mri-Qbox-Brasil/mri-qbot/compare/v1.2.0...v1.2.1) (2026-04-20)
 
 
